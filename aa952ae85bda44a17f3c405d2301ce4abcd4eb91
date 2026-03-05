@@ -1,0 +1,23 @@
+tsconfig.webview.json
+  592d168be9bdb037 1-17
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.8",
+  "base_commit_sha": "aa952ae85bda44a17f3c405d2301ce4abcd4eb91",
+  "prompts": {
+    "592d168be9bdb037": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ae4054e4-a341-4e25-9182-1a9b82c3d7bb",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Vishal Yadav <yadavvi91@gmail.com>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 17,
+      "overriden_lines": 0
+    }
+  }
+}
