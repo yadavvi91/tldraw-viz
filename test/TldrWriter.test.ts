@@ -28,10 +28,11 @@ describe('TldrWriter', () => {
 
 	it('includes document and page records', () => {
 		const tldr = generateTldr(sampleGraph);
-		const doc = tldr.records.find((r) => r.id === 'document:document');
+		const doc = tldr.records.find((r) => r.id === 'document:document') as Record<string, any>;
 		const page = tldr.records.find((r) => r.id === 'page:page');
 
 		expect(doc).toBeDefined();
+		expect(doc.gridSize).toBe(10);
 		expect(page).toBeDefined();
 	});
 

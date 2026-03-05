@@ -73,6 +73,7 @@ function makeGeoShape(
 			growY: 0,
 			labelColor: 'black',
 			url: '',
+			scale: 1,
 		},
 		meta: {
 			sourceLine: node.line,
@@ -159,10 +160,11 @@ export function generateTldr(
 	const pageId = 'page:page';
 	const records: TldrRecord[] = [];
 
-	// Document record
+	// Document record — gridSize is required by tldraw's validator
 	records.push({
 		id: 'document:document',
 		typeName: 'document',
+		gridSize: 10,
 		name: '',
 		meta: {
 			tldrawViz: {
@@ -216,10 +218,13 @@ export function generateTldr(
 				'com.tldraw.instance': 25,
 				'com.tldraw.instance_page_state': 5,
 				'com.tldraw.page': 1,
+				'com.tldraw.pointer': 1,
+				'com.tldraw.instance_presence': 5,
 				'com.tldraw.shape': 4,
 				'com.tldraw.shape.arrow': 5,
 				'com.tldraw.shape.geo': 9,
 				'com.tldraw.shape.text': 2,
+				'com.tldraw.binding': 0,
 				'com.tldraw.binding.arrow': 0,
 			},
 		},
