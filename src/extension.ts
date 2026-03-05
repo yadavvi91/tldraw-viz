@@ -218,13 +218,62 @@ async function generateAll() {
 	);
 }
 
+let debounceTimer: ReturnType<typeof setTimeout> | undefined;
+
+function setupFileWatcher(context: vscode.ExtensionContext): void {
+	const watcher = vscode.workspace.createFileSystemWatcher(
+		'**/*.{ts,tsx,js,jsx,py,go,rs,java}',
+	);
+
+	watcher.onDidChange(async (uri) => {
+		// Only regenerate if a .tldr already exists for this file
+		const sd = getShadowDir();
+		const tldrUri = sd.getTldrUri(uri);
+		try {
+			await vscode.workspace.fs.stat(tldrUri);
+		} catch {
+			return; // No existing diagram, skip
+		}
+
+		// Debounce: 500ms
+		if (debounceTimer) clearTimeout(debounceTimer);
+		debounceTimer = setTimeout(async () => {
+			try {
+				const doc = await vscode.workspace.openTextDocument(uri);
+				const content = doc.getText();
+				const fileName = vscode.workspace.asRelativePath(uri);
+
+				if (await sd.isFresh(uri, content)) return;
+
+				const graph = await extractCallGraph(fileName, content, doc.languageId);
+				if (!graph || graph.nodes.length === 0) return;
+
+				const positioned = layoutCallGraph(graph);
+				const tldr = generateTldr(graph, {
+					sourceFile: fileName,
+					sourceHash: sd.computeHash(content),
+					type: 'file',
+				}, positioned);
+				await sd.writeTldr(tldrUri, serializeTldr(tldr));
+			} catch {
+				// Silently ignore errors during auto-regeneration
+			}
+		}, 500);
+	});
+
+	context.subscriptions.push(watcher);
+}
+
 export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(
 		vscode.commands.registerCommand('tldraw-viz.showDiagram', showDiagram),
 		vscode.commands.registerCommand('tldraw-viz.generateAll', generateAll),
 	);
+
+	setupFileWatcher(context);
 }
 
 export function deactivate() {
 	shadowDir = undefined;
+	if (debounceTimer) clearTimeout(debounceTimer);
 }

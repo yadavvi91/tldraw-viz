@@ -1,7 +1,6 @@
 .vscode/**
 src/**
 test/**
-node_modules/**
 .gitignore
 .claude/**
 CLAUDE.md
@@ -10,3 +9,6 @@ esbuild.mjs
 vitest.config.ts
 **/*.map
 .context/**
+node_modules/**
+!node_modules/web-tree-sitter/**
+!node_modules/tree-sitter-wasms/**
