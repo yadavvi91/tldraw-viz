@@ -1,0 +1,37 @@
+test/TldrWriter.test.ts
+  592d168be9bdb037 3,142-159,202,233-234,236-237,239-242,247,249,251-440
+test/SemanticAnalyzer.test.ts
+  592d168be9bdb037 1-266
+src/DiagramGenerator.ts
+  592d168be9bdb037 2,4-15,18-25,29-30,32-33,35-37,47-60,62,64-65,68-76,90,92,96-99,102-120
+src/TldrWriter.ts
+  592d168be9bdb037 2-3,11-12,20-48,55,76-99,102,106,108-114,124,127,130-131,134,147,152,157,159-160,173,183,185,221-222,228,244,259-264,266-267,270-279,281-293,302,323
+test/DiagramGenerator.test.ts
+  592d168be9bdb037 26-28,32-34,39-42,44-45,55-57,70-73,76-78,90-153
+src/extension.ts
+  592d168be9bdb037 10,13,46,52,61-66,93-94,96,103,204,206,211-212,390-391,393-394
+src/SemanticAnalyzer.ts
+  592d168be9bdb037 1-491
+test/fixtures/react-component.tsx
+  592d168be9bdb037 1-45
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.8",
+  "base_commit_sha": "76019fffc643c5f390d9d171cfea718b50d03ea0",
+  "prompts": {
+    "592d168be9bdb037": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ae4054e4-a341-4e25-9182-1a9b82c3d7bb",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Vishal Yadav <yadavvi91@gmail.com>",
+      "messages": [],
+      "total_additions": 1355,
+      "total_deletions": 104,
+      "accepted_lines": 1334,
+      "overriden_lines": 0
+    }
+  }
+}
