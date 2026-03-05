@@ -1,10 +1,12 @@
 import * as vscode from 'vscode';
+import path from 'path';
 import { ShadowDirectory } from './ShadowDirectory';
 import { initParser, parseSource, extractNodes } from './CodeAnalyzer';
 import { extractEdges } from './CallGraphExtractor';
 import { layoutCallGraph } from './DiagramGenerator';
 import { generateTldr, serializeTldr } from './TldrWriter';
 import { DEFAULT_CONFIG, parseConfig, shouldSkipFile, hasEnoughSubstance, type TldrawConfig } from './GranularityFilter';
+import { traceFlow, type FileReader } from './FlowTracer';
 import { getLanguageConfig } from './languages';
 import type { CallGraph } from './types';
 
@@ -211,10 +213,140 @@ async function generateAll() {
 				}
 			}
 
+			// Also generate flow diagrams from config
+			if (config.flows.length > 0 && !token.isCancellationRequested) {
+				progress.report({ message: 'Generating flow diagrams...' });
+				const fileReader = createVscodeFileReader(workspaceRoot);
+
+				for (const flowConfig of config.flows) {
+					if (token.isCancellationRequested) break;
+
+					const colonIdx = flowConfig.entrypoint.lastIndexOf(':');
+					if (colonIdx === -1) continue;
+
+					const filePath = flowConfig.entrypoint.slice(0, colonIdx);
+					const funcName = flowConfig.entrypoint.slice(colonIdx + 1);
+					const absolutePath = path.join(workspaceRoot.fsPath, filePath);
+
+					try {
+						const flow = await traceFlow(absolutePath, funcName, flowConfig.name, fileReader);
+						if (flow.nodes.length === 0) continue;
+
+						const callGraph: CallGraph = {
+							nodes: flow.nodes.map(n => ({
+								...n,
+								name: `${n.name} [${path.basename(n.sourceFile)}]`,
+							})),
+							edges: flow.edges,
+							fileName: flowConfig.name,
+							language: 'flow',
+						};
+
+						const positioned = layoutCallGraph(callGraph);
+						const tldr = generateTldr(callGraph, {
+							sourceFile: flowConfig.entrypoint,
+							type: 'flow',
+						}, positioned);
+
+						await sd.writeTldr(sd.getFlowUri(flowConfig.name), serializeTldr(tldr));
+						generated++;
+					} catch {
+						// Skip flows that fail
+					}
+				}
+			}
+
 			vscode.window.showInformationMessage(
 				`tldraw diagrams: ${generated} generated, ${skipped} skipped`,
 			);
 		},
+	);
+}
+
+/** Create a FileReader that uses the VS Code workspace filesystem */
+function createVscodeFileReader(workspaceRoot: vscode.Uri): FileReader {
+	return {
+		async readFile(absolutePath: string): Promise<string> {
+			const uri = vscode.Uri.file(absolutePath);
+			const data = await vscode.workspace.fs.readFile(uri);
+			return Buffer.from(data).toString('utf-8');
+		},
+		async listFiles(): Promise<string[]> {
+			const patterns = ['**/*.ts', '**/*.tsx', '**/*.js', '**/*.jsx', '**/*.py', '**/*.go', '**/*.rs', '**/*.java'];
+			const files: string[] = [];
+			for (const pattern of patterns) {
+				const uris = await vscode.workspace.findFiles(pattern, '**/node_modules/**');
+				for (const uri of uris) {
+					files.push(uri.fsPath);
+				}
+			}
+			return files;
+		},
+	};
+}
+
+async function generateFlows() {
+	const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri;
+	if (!workspaceRoot) {
+		vscode.window.showWarningMessage('No workspace folder open.');
+		return;
+	}
+
+	const sd = getShadowDir();
+	const config = await loadTldrawConfig(workspaceRoot);
+
+	if (config.flows.length === 0) {
+		vscode.window.showInformationMessage(
+			'No flows defined. Add flows to .tldraw/tldraw.config.json',
+		);
+		return;
+	}
+
+	const fileReader = createVscodeFileReader(workspaceRoot);
+	let generated = 0;
+
+	for (const flowConfig of config.flows) {
+		// Parse entrypoint: "src/auth/login.ts:handleLogin"
+		const colonIdx = flowConfig.entrypoint.lastIndexOf(':');
+		if (colonIdx === -1) continue;
+
+		const filePath = flowConfig.entrypoint.slice(0, colonIdx);
+		const funcName = flowConfig.entrypoint.slice(colonIdx + 1);
+		const absolutePath = path.join(workspaceRoot.fsPath, filePath);
+
+		try {
+			const flow = await traceFlow(absolutePath, funcName, flowConfig.name, fileReader);
+
+			if (flow.nodes.length === 0) continue;
+
+			// Convert FlowGraph to CallGraph for TldrWriter
+			const callGraph: CallGraph = {
+				nodes: flow.nodes.map(n => ({
+					...n,
+					// For flow diagrams, show source file in the label
+					name: `${n.name} [${path.basename(n.sourceFile)}]`,
+				})),
+				edges: flow.edges,
+				fileName: flowConfig.name,
+				language: 'flow',
+			};
+
+			const positioned = layoutCallGraph(callGraph);
+			const tldr = generateTldr(callGraph, {
+				sourceFile: flowConfig.entrypoint,
+				type: 'flow',
+			}, positioned);
+
+			const flowUri = sd.getFlowUri(flowConfig.name);
+			await sd.writeTldr(flowUri, serializeTldr(tldr));
+			generated++;
+		} catch {
+			// Skip flows that fail to trace
+		}
+	}
+
+	vscode.window.showInformationMessage(
+		`Generated ${generated} flow diagram${generated !== 1 ? 's' : ''}`,
 	);
 }
 
@@ -268,6 +400,7 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(
 		vscode.commands.registerCommand('tldraw-viz.showDiagram', showDiagram),
 		vscode.commands.registerCommand('tldraw-viz.generateAll', generateAll),
+		vscode.commands.registerCommand('tldraw-viz.generateFlows', generateFlows),
 	);
 
 	setupFileWatcher(context);

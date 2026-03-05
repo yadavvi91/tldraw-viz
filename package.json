@@ -31,6 +31,11 @@
         "command": "tldraw-viz.generateAll",
         "title": "Generate All Diagrams",
         "category": "tldraw"
+      },
+      {
+        "command": "tldraw-viz.generateFlows",
+        "title": "Generate Flow Diagrams",
+        "category": "tldraw"
       }
     ],
     "keybindings": [
