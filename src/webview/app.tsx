@@ -1,6 +1,6 @@
 import React, { Component, useCallback, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Tldraw, type Editor, parseTldrawJsonFile, loadSnapshot, getSnapshot } from 'tldraw';
+import { Tldraw, Box, type Editor, parseTldrawJsonFile, loadSnapshot, getSnapshot } from 'tldraw';
 import 'tldraw/tldraw.css';
 import type { ExtensionToWebview } from '../messages';
 import { vscode } from './vscode';
@@ -86,32 +86,50 @@ function App() {
 }
 
 /**
- * Force tldraw to recalculate viewport bounds from the container element.
- * In VS Code's nested iframe, getBoundingClientRect() can temporarily return
- * zero dimensions, causing tldraw to think the viewport is empty and unmount
- * all shape DOM elements. This function forces a re-evaluation.
+ * Force tldraw to recalculate viewport bounds.
+ * In VS Code's nested iframe, getBoundingClientRect() can return zero/tiny
+ * dimensions, causing tldraw's culling system to hide all shapes (display: none).
  *
- * IMPORTANT: Do NOT call this during tldraw's initialization — it interferes
- * with tldraw's _willSetInitialBounds flag. Only use for recovery.
+ * This function tries the container first, then falls back to window dimensions
+ * via a Box object (bypassing getBoundingClientRect entirely).
  */
-function forceViewportUpdate(ed: Editor): boolean {
+function forceViewportUpdate(ed: Editor, alsoZoomToFit = true): boolean {
 	try {
 		const container = ed.getContainer();
 		if (!container?.isConnected) return false;
 
 		const rect = container.getBoundingClientRect();
-		if (rect.width < 2 || rect.height < 2) {
-			debugLog(`Viewport fix: container too small (${rect.width}x${rect.height}), skipping`);
-			return false;
+		if (rect.width > 10 && rect.height > 10) {
+			// Container has proper dimensions — use it directly
+			ed.updateViewportScreenBounds(container);
+		} else {
+			// Container has bad dimensions — use window size as fallback
+			const w = window.innerWidth || document.documentElement.clientWidth || 800;
+			const h = window.innerHeight || document.documentElement.clientHeight || 600;
+			debugLog(`Viewport fix: container bad (${Math.round(rect.width)}x${Math.round(rect.height)}), using window ${w}x${h}`);
+			ed.updateViewportScreenBounds(new Box(0, 0, w, h));
 		}
 
-		ed.updateViewportScreenBounds(container);
-		ed.zoomToFit({ animation: { duration: 0 } });
-		debugLog(`Viewport fix: updated to ${Math.round(rect.width)}x${Math.round(rect.height)}`);
+		if (alsoZoomToFit) {
+			ed.zoomToFit({ animation: { duration: 0 } });
+		}
 		return true;
 	} catch {
 		return false;
 	}
+}
+
+/**
+ * Check if shapes are loaded but all hidden by tldraw's culling system.
+ * When viewport bounds are wrong (e.g., 1x1), tldraw culls all shapes
+ * by setting display:none on .tl-shape elements.
+ */
+function areAllShapesCulled(container: HTMLElement): boolean {
+	const shapeElements = container.querySelectorAll('.tl-shape');
+	if (shapeElements.length === 0) return false; // no DOM elements at all — different problem
+	return Array.from(shapeElements).every(
+		el => (el as HTMLElement).style.display === 'none'
+	);
 }
 
 function TldrawEditor({ fileContents, onRecoveryNeeded }: { fileContents: string; onRecoveryNeeded: () => void }) {
@@ -217,61 +235,95 @@ function TldrawEditor({ fileContents, onRecoveryNeeded }: { fileContents: string
 		};
 	}, [editor]);
 
-	// Health check: detect blank canvas and recover by fixing viewport bounds
-	// Root cause: VS Code's nested iframe can cause getBoundingClientRect() to
-	// return zero dimensions, making tldraw think the viewport is empty and
-	// unmounting all shape DOM elements. Instead of remounting (which recreates
-	// the same problem), we force a viewport bounds recalculation.
+	// Post-mount visibility check: ensure shapes are visible after tldraw initializes.
+	// tldraw's initial updateViewportScreenBounds may use bad getBoundingClientRect() values,
+	// resulting in a 1x1 viewport that culls all shapes. We check at escalating intervals
+	// and fix if needed, starting after tldraw's _willSetInitialBounds has been consumed.
 	useEffect(() => {
 		if (!editor) return;
 
-		let blankCount = 0;
-		let viewportFixAttempts = 0;
+		let cancelled = false;
+
+		const ensureVisible = () => {
+			if (cancelled) return;
+			const shapeCount = editor.getCurrentPageShapeIds().size;
+			if (shapeCount === 0) return; // empty diagram is valid
+
+			const container = editor.getContainer();
+			if (!container?.isConnected) return;
+
+			const shapeElements = container.querySelectorAll('.tl-shape');
+			const noShapesInDom = shapeElements.length === 0;
+			const allCulled = !noShapesInDom && areAllShapesCulled(container);
+
+			if (noShapesInDom || allCulled) {
+				debugLog(`Post-mount fix: ${shapeCount} shapes, ${shapeElements.length} in DOM, allCulled=${allCulled}`);
+				forceViewportUpdate(editor);
+			}
+		};
+
+		// Check at escalating intervals (after tldraw's initial setup completes)
+		const timers = [
+			setTimeout(ensureVisible, 300),
+			setTimeout(ensureVisible, 700),
+			setTimeout(ensureVisible, 1500),
+			setTimeout(ensureVisible, 3000),
+		];
+
+		return () => {
+			cancelled = true;
+			timers.forEach(clearTimeout);
+		};
+	}, [editor]);
+
+	// Ongoing health check: detect blank canvas from viewport corruption.
+	// Catches both: (a) shapes not in DOM at all, (b) shapes in DOM but all culled.
+	useEffect(() => {
+		if (!editor) return;
+
+		let failCount = 0;
 
 		const interval = setInterval(() => {
 			try {
 				const shapeCount = editor.getCurrentPageShapeIds().size;
 				if (shapeCount === 0) {
-					blankCount = 0;
-					return; // Empty diagram is valid
+					failCount = 0;
+					return;
 				}
 
 				const container = editor.getContainer();
 				if (!container?.isConnected) {
-					blankCount++;
-					debugLog(`Health: container detached (${blankCount}/3)`);
-					if (blankCount >= 3) {
-						blankCount = 0;
-						onRecoveryNeeded(); // Container truly gone — remount
+					failCount++;
+					if (failCount >= 3) {
+						failCount = 0;
+						onRecoveryNeeded();
 					}
 					return;
 				}
 
-				// Check if tldraw is actually rendering shapes visually
 				const shapeElements = container.querySelectorAll('.tl-shape');
-				if (shapeElements.length === 0) {
-					blankCount++;
-					viewportFixAttempts++;
-					debugLog(`Health: ${shapeCount} shapes but 0 rendered — fixing viewport (attempt ${viewportFixAttempts})`);
+				const noShapesInDom = shapeElements.length === 0;
+				const allCulled = !noShapesInDom && areAllShapesCulled(container);
 
-					// First, try fixing viewport bounds (much better than remounting)
+				if (noShapesInDom || allCulled) {
+					failCount++;
+					debugLog(`Health: ${shapeCount} shapes, ${shapeElements.length} in DOM, allCulled=${allCulled} (${failCount}/5)`);
+
+					// Try viewport fix first
 					const fixed = forceViewportUpdate(editor);
 
-					if (!fixed || viewportFixAttempts > 10) {
-						// Viewport fix failed repeatedly — fall back to full remount
-						debugLog('Viewport fix exhausted — remounting');
-						blankCount = 0;
-						viewportFixAttempts = 0;
+					if (!fixed && failCount >= 5) {
+						debugLog('Health: viewport fix exhausted — remounting');
+						failCount = 0;
 						onRecoveryNeeded();
 					}
 				} else {
-					blankCount = 0;
-					viewportFixAttempts = 0;
+					failCount = 0;
 				}
 			} catch {
-				blankCount++;
-				if (blankCount >= 3) {
-					blankCount = 0;
+				failCount++;
+				if (failCount >= 3) {
+					failCount = 0;
 					onRecoveryNeeded();
 				}
 			}
@@ -281,7 +333,7 @@ function TldrawEditor({ fileContents, onRecoveryNeeded }: { fileContents: string
 	}, [editor, onRecoveryNeeded]);
 
 	return (
-		<div style={{ width: '100%', height: '100%' }}>
+		<div style={{ position: 'absolute', inset: 0 }}>
 			<Tldraw onMount={handleMount} autoFocus={false} />
 		</div>
 	);
