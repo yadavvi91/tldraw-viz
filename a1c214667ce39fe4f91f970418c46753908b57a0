@@ -1,0 +1,27 @@
+src/TldrawEditorProvider.ts
+  08a2f92d8bc7b26f 172
+package.json
+  08a2f92d8bc7b26f 5
+src/MermaidConverter.ts
+  08a2f92d8bc7b26f 76-80,83
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.8",
+  "base_commit_sha": "a1c214667ce39fe4f91f970418c46753908b57a0",
+  "prompts": {
+    "08a2f92d8bc7b26f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "98b8bab5-f058-4207-a796-cd16c56169d1",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Vishal Yadav <yadavvi91@gmail.com>",
+      "messages": [],
+      "total_additions": 8,
+      "total_deletions": 2,
+      "accepted_lines": 8,
+      "overriden_lines": 0
+    }
+  }
+}
