@@ -1,0 +1,40 @@
+src/TldrawEditorProvider.ts
+  08a2f92d8bc7b26f 73-74,82-83,87,90,98,105-107
+src/extension.ts
+  08a2f92d8bc7b26f 1237,1241-1244
+package.json
+  08a2f92d8bc7b26f 5
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.8",
+  "base_commit_sha": "b2d238d6273230ed8905f3eec5536d4c6703b417",
+  "prompts": {
+    "08a2f92d8bc7b26f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "98b8bab5-f058-4207-a796-cd16c56169d1",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Vishal Yadav <yadavvi91@gmail.com>",
+      "messages": [],
+      "total_additions": 19,
+      "total_deletions": 6,
+      "accepted_lines": 16,
+      "overriden_lines": 0
+    },
+    "592d168be9bdb037": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ae4054e4-a341-4e25-9182-1a9b82c3d7bb",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Vishal Yadav <yadavvi91@gmail.com>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 17,
+      "overriden_lines": 0
+    }
+  }
+}
