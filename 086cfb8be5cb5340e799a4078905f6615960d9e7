@@ -1,0 +1,27 @@
+src/extension.ts
+  592d168be9bdb037 221-266,272-273,278
+.vscodeignore
+  592d168be9bdb037 12-14
+.github/workflows/ci.yml
+  592d168be9bdb037 1-61
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.8",
+  "base_commit_sha": "086cfb8be5cb5340e799a4078905f6615960d9e7",
+  "prompts": {
+    "592d168be9bdb037": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ae4054e4-a341-4e25-9182-1a9b82c3d7bb",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Vishal Yadav <yadavvi91@gmail.com>",
+      "messages": [],
+      "total_additions": 113,
+      "total_deletions": 1,
+      "accepted_lines": 113,
+      "overriden_lines": 0
+    }
+  }
+}
