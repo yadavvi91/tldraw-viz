@@ -1,6 +1,8 @@
+import path from 'path';
 import type { CallGraph, CodeNode, CodeEdge } from './types';
 import type { LanguageConfig } from './languages';
 import type { ProjectGraph } from './ProjectAnalyzer';
+import type { FlowGraph, FlowNode } from './FlowTracer';
 
 /**
  * Extract React-specific details from source content using regex.
@@ -409,6 +411,84 @@ function generateModuleStructurePrompt(projectGraph: ProjectGraph): string {
 	lines.push('- Show dependency arrows between modules with labels describing the relationship');
 	lines.push('- Use thick arrows (==>) for heavy dependencies (3+ imports)');
 	lines.push('- Use dotted arrows (-.->)  for light dependencies (1 import)');
+	lines.push('- Every node must have a class assignment');
+
+	return lines.join('\n');
+}
+
+/**
+ * Generate a Claude prompt for a CROSS-FILE FLOW diagram.
+ * Groups functions by source file and asks Claude for rich data flow visualization.
+ */
+export function generateFlowPrompt(flowGraph: FlowGraph): string {
+	const lines: string[] = [];
+
+	lines.push(`Generate a CROSS-FILE FLOW mermaid flowchart for the "${flowGraph.name}" flow.`);
+	lines.push('');
+	lines.push('## Goal');
+	lines.push('Show how execution flows across multiple source files, including data flow and function roles.');
+	lines.push('Group functions by their source file using subgraphs.');
+	lines.push('Label edges with data passed between functions.');
+	lines.push('Highlight the entrypoint, external calls, and key decision points.');
+	lines.push('');
+
+	lines.push(`## Flow: ${flowGraph.name}`);
+	lines.push(`Entrypoint: ${flowGraph.entrypoint}`);
+	lines.push('');
+
+	// Group nodes by source file
+	const fileGroups = new Map<string, FlowNode[]>();
+	for (const node of flowGraph.nodes) {
+		const existing = fileGroups.get(node.sourceFile) || [];
+		existing.push(node);
+		fileGroups.set(node.sourceFile, existing);
+	}
+
+	lines.push('## Functions by source file');
+	lines.push('');
+	for (const [file, nodes] of fileGroups) {
+		lines.push(`### ${file}`);
+		for (const node of nodes) {
+			const prefix = node.parent ? `${node.parent}.` : '';
+			lines.push(`  - ${prefix}${node.name} (line ${node.line}, ${node.type})`);
+		}
+		lines.push('');
+	}
+
+	// Call relationships with cross-file markers
+	if (flowGraph.edges.length > 0) {
+		const nodeMap = new Map(flowGraph.nodes.map(n => [n.id, n]));
+		lines.push('## Call relationships');
+		lines.push('');
+		for (const edge of flowGraph.edges) {
+			const from = nodeMap.get(edge.from);
+			const to = nodeMap.get(edge.to);
+			if (!from || !to) continue;
+			const crossFile = from.sourceFile !== to.sourceFile ? ' [CROSS-FILE]' : '';
+			lines.push(`  ${from.name} (${path.basename(from.sourceFile)}) -> ${to.name} (${path.basename(to.sourceFile)})${crossFile}`);
+		}
+		lines.push('');
+	}
+
+	lines.push(...getMermaidStyleInstructions());
+
+	lines.push('');
+	lines.push('## Additional flow styles');
+	lines.push('Add these classDef styles:');
+	lines.push('```');
+	lines.push('classDef entrypoint fill:#C8E6C9,stroke:#2E7D32,color:#1B5E20,stroke-width:3px');
+	lines.push('classDef crossFile fill:#FFECB3,stroke:#FF8F00,color:#E65100');
+	lines.push('```');
+	lines.push('');
+
+	lines.push('## Important');
+	lines.push('- Return ONLY the mermaid code block, no explanation');
+	lines.push('- Use one subgraph per source file');
+	lines.push('- Mark the entrypoint node with class `entrypoint` and a thicker border');
+	lines.push('- Use thick arrows (==>) for the primary execution path');
+	lines.push('- Use dotted arrows (-.->)  for async/callback calls');
+	lines.push('- Use labeled edges to describe what data flows between functions');
+	lines.push('- Mark cross-file calls with class `crossFile`');
 	lines.push('- Every node must have a class assignment');
 
 	return lines.join('\n');

@@ -11,11 +11,13 @@ import { analyze } from './SemanticAnalyzer';
 import { getLanguageConfig } from './languages';
 import { parseMermaid } from './MermaidParser';
 import { mermaidToCallGraph } from './MermaidConverter';
-import { generateOverviewPrompt, generateDetailPrompt, generateProjectPrompt } from './StructuralSummary';
+import { generateOverviewPrompt, generateDetailPrompt, generateProjectPrompt, generateFlowPrompt } from './StructuralSummary';
 import { ClaudeService, estimateCost } from './ClaudeService';
 import { buildProjectGraph } from './ProjectAnalyzer';
 import { scanDocumentation } from './DocumentationScanner';
+import { detectEntrypoints, entrypointsToFlowConfigs } from './EntrypointDetector';
 import type { CallGraph } from './types';
+import type { FlowConfig } from './GranularityFilter';
 import type Parser from 'web-tree-sitter';
 
 let shadowDir: ShadowDirectory | undefined;
@@ -231,12 +233,19 @@ async function generateAll() {
 				}
 			}
 
-			// Also generate flow diagrams from config
-			if (config.flows.length > 0 && !token.isCancellationRequested) {
-				progress.report({ message: 'Generating flow diagrams...' });
-				const fileReader = createVscodeFileReader(workspaceRoot);
+			// Also generate flow diagrams (from config or auto-detected)
+			const fileReader = createVscodeFileReader(workspaceRoot);
+			let flowConfigs = config.flows;
+			if (flowConfigs.length === 0 && !token.isCancellationRequested) {
+				progress.report({ message: 'Auto-detecting flow entrypoints...' });
+				const detected = await detectEntrypoints(fileReader, workspaceRoot.fsPath);
+				flowConfigs = entrypointsToFlowConfigs(detected);
+			}
 
-				for (const flowConfig of config.flows) {
+			if (flowConfigs.length > 0 && !token.isCancellationRequested) {
+				progress.report({ message: 'Generating flow diagrams...' });
+
+				for (const flowConfig of flowConfigs) {
 					if (token.isCancellationRequested) break;
 
 					const colonIdx = flowConfig.entrypoint.lastIndexOf(':');
@@ -312,18 +321,20 @@ async function generateFlows() {
 
 	const sd = getShadowDir();
 	const config = await loadTldrawConfig(workspaceRoot);
+	const fileReader = createVscodeFileReader(workspaceRoot);
 
-	if (config.flows.length === 0) {
+	const flowConfigs = await resolveFlowConfigs(config.flows, fileReader, workspaceRoot, { multiSelect: true });
+	if (!flowConfigs) return; // User cancelled
+	if (flowConfigs.length === 0) {
 		vscode.window.showInformationMessage(
-			'No flows defined. Add flows to .tldraw/tldraw.config.json',
+			'No flows configured and no entrypoints auto-detected. Add flows to .tldraw/tldraw.config.json',
 		);
 		return;
 	}
 
-	const fileReader = createVscodeFileReader(workspaceRoot);
 	let generated = 0;
 
-	for (const flowConfig of config.flows) {
+	for (const flowConfig of flowConfigs) {
 		// Parse entrypoint: "src/auth/login.ts:handleLogin"
 		const colonIdx = flowConfig.entrypoint.lastIndexOf(':');
 		if (colonIdx === -1) continue;
@@ -732,6 +743,155 @@ async function generateProjectArchitecture(
 	);
 }
 
+/**
+ * Resolve flow configs from config, falling back to auto-detection.
+ * Returns null if user cancels the QuickPick.
+ */
+async function resolveFlowConfigs(
+	configFlows: FlowConfig[],
+	fileReader: FileReader,
+	workspaceRoot: vscode.Uri,
+	options?: { multiSelect?: boolean },
+): Promise<FlowConfig[] | null> {
+	let flowConfigs = configFlows;
+
+	if (flowConfigs.length === 0) {
+		const detected = await detectEntrypoints(fileReader, workspaceRoot.fsPath);
+		flowConfigs = entrypointsToFlowConfigs(detected);
+	}
+
+	if (flowConfigs.length === 0) return [];
+
+	if (flowConfigs.length === 1 && !options?.multiSelect) return flowConfigs;
+
+	const items = flowConfigs.map(f => ({
+		label: f.name,
+		description: f.entrypoint,
+		picked: options?.multiSelect ?? false,
+	}));
+
+	if (options?.multiSelect) {
+		const selected = await vscode.window.showQuickPick(items, {
+			canPickMany: true,
+			placeHolder: `${flowConfigs.length} flows available. Select which to generate:`,
+		});
+		if (!selected) return null;
+		return selected.map(s => flowConfigs.find(f => f.name === s.label)!);
+	} else {
+		const picked = await vscode.window.showQuickPick(items, {
+			placeHolder: 'Select a flow:',
+		});
+		if (!picked) return null;
+		return [flowConfigs.find(f => f.name === picked.label)!];
+	}
+}
+
+async function generateFlowWithClaude(
+	context: vscode.ExtensionContext,
+): Promise<void> {
+	if (!claudeService) {
+		const choice = await vscode.window.showWarningMessage(
+			'No Anthropic API key set. Set one to generate flow diagrams with Claude.',
+			'Set API Key',
+		);
+		if (choice === 'Set API Key') return setApiKey(context);
+		return;
+	}
+
+	const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri;
+	if (!workspaceRoot) {
+		vscode.window.showWarningMessage('No workspace folder open.');
+		return;
+	}
+
+	const sd = getShadowDir();
+	const config = await loadTldrawConfig(workspaceRoot);
+	const fileReader = createVscodeFileReader(workspaceRoot);
+
+	const flowConfigs = await resolveFlowConfigs(config.flows, fileReader, workspaceRoot);
+
+	if (!flowConfigs) return; // User cancelled
+	if (flowConfigs.length === 0) {
+		vscode.window.showWarningMessage(
+			'No flows configured and no entrypoints auto-detected. Add flows to .tldraw/tldraw.config.json',
+		);
+		return;
+	}
+
+	const selectedFlow = flowConfigs[0];
+	const colonIdx = selectedFlow.entrypoint.lastIndexOf(':');
+	if (colonIdx === -1) {
+		vscode.window.showWarningMessage(`Invalid entrypoint format: ${selectedFlow.entrypoint}`);
+		return;
+	}
+
+	const filePath = selectedFlow.entrypoint.slice(0, colonIdx);
+	const funcName = selectedFlow.entrypoint.slice(colonIdx + 1);
+	const absolutePath = path.join(workspaceRoot.fsPath, filePath);
+
+	await vscode.window.withProgress(
+		{
+			location: vscode.ProgressLocation.Notification,
+			title: `Generating "${selectedFlow.name}" flow with Claude...`,
+			cancellable: false,
+		},
+		async (progress) => {
+			progress.report({ message: 'Tracing flow...' });
+			const flowGraph = await traceFlow(absolutePath, funcName, selectedFlow.name, fileReader);
+
+			if (flowGraph.nodes.length === 0) {
+				vscode.window.showWarningMessage(
+					`No functions found for flow "${selectedFlow.name}". Check the entrypoint.`,
+				);
+				return;
+			}
+
+			progress.report({ message: 'Generating diagram with Claude...' });
+			const prompt = generateFlowPrompt(flowGraph);
+			const result = await claudeService!.generateMermaid(prompt, 8192);
+
+			// Write .mmd to .mermaid/flows/
+			const mmdUri = sd.getFlowMermaidUri(selectedFlow.name);
+			await vscode.workspace.fs.writeFile(mmdUri, Buffer.from(result.mermaidCode, 'utf-8'));
+
+			// Convert mermaid → CallGraph → layout → .tldr
+			const mermaidGraph = parseMermaid(result.mermaidCode);
+			const callGraph = mermaidToCallGraph(mermaidGraph, selectedFlow.name);
+			const layout = layoutCallGraph(callGraph);
+			const tldr = generateTldr(callGraph, {
+				sourceFile: selectedFlow.entrypoint,
+				sourceHash: sd.computeHash(result.mermaidCode),
+				type: 'flow',
+			}, layout);
+
+			const flowUri = sd.getFlowUri(selectedFlow.name);
+			await sd.writeTldr(flowUri, serializeTldr(tldr));
+
+			try {
+				await vscode.commands.executeCommand(
+					'vscode.openWith',
+					flowUri,
+					'tldraw.tldr',
+					vscode.ViewColumn.Beside,
+				);
+			} catch {
+				await vscode.commands.executeCommand(
+					'vscode.open',
+					flowUri,
+					{ viewColumn: vscode.ViewColumn.Beside },
+				);
+			}
+
+			updateStatusBar(result.inputTokens, result.outputTokens);
+
+			const fileCount = new Set(flowGraph.nodes.map(n => n.sourceFile)).size;
+			vscode.window.showInformationMessage(
+				`Flow "${selectedFlow.name}": ${flowGraph.nodes.length} functions across ${fileCount} files`,
+			);
+		},
+	);
+}
+
 let debounceTimer: ReturnType<typeof setTimeout> | undefined;
 let mermaidDebounceTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -842,6 +1002,7 @@ export async function activate(context: vscode.ExtensionContext) {
 		vscode.commands.registerCommand('tldraw-viz.setApiKey', () => setApiKey(context)),
 		vscode.commands.registerCommand('tldraw-viz.clearApiKey', () => clearApiKey(context)),
 		vscode.commands.registerCommand('tldraw-viz.generateProjectArchitecture', () => generateProjectArchitecture(context)),
+		vscode.commands.registerCommand('tldraw-viz.generateFlowWithClaude', () => generateFlowWithClaude(context)),
 	);
 
 	setupFileWatcher(context);

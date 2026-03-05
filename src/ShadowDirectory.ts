@@ -35,6 +35,16 @@ export class ShadowDirectory {
 		);
 	}
 
+	/** Map a flow name to its .mmd path in the .mermaid directory */
+	getFlowMermaidUri(flowName: string): vscode.Uri {
+		return vscode.Uri.joinPath(
+			this.workspaceRoot,
+			this.mermaidDirName,
+			'flows',
+			`${flowName}.mmd`,
+		);
+	}
+
 	/** Get the .mermaid directory name */
 	getMermaidDir(): string {
 		return this.mermaidDirName;
