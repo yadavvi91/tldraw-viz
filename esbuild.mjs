@@ -1,10 +1,11 @@
 import * as esbuild from 'esbuild';
+import { webviewBuildOptions } from './esbuild.webview.mjs';
 
 const isWatch = process.argv.includes('--watch');
 const isProd = process.argv.includes('--production');
 
 /** @type {esbuild.BuildOptions} */
-const buildOptions = {
+const extensionBuildOptions = {
 	entryPoints: ['src/extension.ts'],
 	bundle: true,
 	outfile: 'dist/extension.js',
@@ -18,10 +19,16 @@ const buildOptions = {
 };
 
 if (isWatch) {
-	const ctx = await esbuild.context(buildOptions);
-	await ctx.watch();
+	const [extCtx, webCtx] = await Promise.all([
+		esbuild.context(extensionBuildOptions),
+		esbuild.context(webviewBuildOptions),
+	]);
+	await Promise.all([extCtx.watch(), webCtx.watch()]);
 	console.log('Watching for changes...');
 } else {
-	await esbuild.build(buildOptions);
+	await Promise.all([
+		esbuild.build(extensionBuildOptions),
+		esbuild.build(webviewBuildOptions),
+	]);
 	console.log('Build complete.');
 }

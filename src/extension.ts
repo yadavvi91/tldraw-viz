@@ -18,6 +18,7 @@ import { scanDocumentation } from './DocumentationScanner';
 import { detectEntrypoints, entrypointsToFlowConfigs } from './EntrypointDetector';
 import type { CallGraph } from './types';
 import type { FlowConfig } from './GranularityFilter';
+import { TldrawEditorProvider } from './TldrawEditorProvider';
 import type Parser from 'web-tree-sitter';
 
 let shadowDir: ShadowDirectory | undefined;
@@ -95,7 +96,7 @@ async function showDiagram() {
 		await vscode.commands.executeCommand(
 			'vscode.openWith',
 			tldrUri,
-			'tldraw.tldr',
+			'tldraw-viz.tldr',
 			vscode.ViewColumn.Beside,
 		);
 		return;
@@ -140,18 +141,15 @@ async function showDiagram() {
 		await vscode.commands.executeCommand(
 			'vscode.openWith',
 			tldrUri,
-			'tldraw.tldr',
+			'tldraw-viz.tldr',
 			vscode.ViewColumn.Beside,
 		);
 	} catch {
-		// Fallback: open as text if tldraw extension not installed
+		// Fallback: open as text
 		await vscode.commands.executeCommand(
 			'vscode.open',
 			tldrUri,
 			{ viewColumn: vscode.ViewColumn.Beside },
-		);
-		vscode.window.showWarningMessage(
-			'Install the tldraw extension (tldraw-org.tldraw-vscode) for visual diagrams.',
 		);
 	}
 
@@ -423,7 +421,7 @@ async function convertMermaid() {
 		await vscode.commands.executeCommand(
 			'vscode.openWith',
 			tldrUri,
-			'tldraw.tldr',
+			'tldraw-viz.tldr',
 			vscode.ViewColumn.Beside,
 		);
 	} catch {
@@ -633,7 +631,7 @@ async function generateDiagram(
 				await vscode.commands.executeCommand(
 					'vscode.openWith',
 					tldrUri,
-					'tldraw.tldr',
+					'tldraw-viz.tldr',
 					vscode.ViewColumn.Beside,
 				);
 			} catch {
@@ -748,7 +746,7 @@ async function generateProjectArchitecture(
 				await vscode.commands.executeCommand(
 					'vscode.openWith',
 					tldrUri,
-					'tldraw.tldr',
+					'tldraw-viz.tldr',
 					vscode.ViewColumn.Beside,
 				);
 			} catch {
@@ -899,7 +897,7 @@ async function generateFlowWithClaude(
 				await vscode.commands.executeCommand(
 					'vscode.openWith',
 					flowUri,
-					'tldraw.tldr',
+					'tldraw-viz.tldr',
 					vscode.ViewColumn.Beside,
 				);
 			} catch {
@@ -1233,6 +1231,11 @@ export async function activate(context: vscode.ExtensionContext) {
 	// Register URI handler for shape click-to-navigate
 	context.subscriptions.push(
 		vscode.window.registerUriHandler(new NavigationUriHandler()),
+	);
+
+	// Register custom editor for .tldr files (renders tldraw + click-to-navigate)
+	context.subscriptions.push(
+		TldrawEditorProvider.register(context, findCurrentLine),
 	);
 
 	setupFileWatcher(context);

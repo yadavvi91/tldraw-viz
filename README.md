@@ -5,23 +5,25 @@ Auto-generate interactive call graph diagrams from source code, rendered in [tld
 ## Prerequisites
 
 - VS Code 1.85+
-- [tldraw VS Code extension](https://marketplace.visualstudio.com/items?itemName=tldraw-org.tldraw-vscode) (`tldraw-org.tldraw-vscode`)
 
 ## Installation
 
 Install from VSIX:
 
 ```
-code --install-extension tldraw-viz-0.6.0.vsix
+code --install-extension tldraw-viz-2.0.0.vsix
 ```
 
 Or in VS Code: **Extensions** > **...** > **Install from VSIX...**
+
+> **Note**: This extension includes its own tldraw viewer. You do **not** need to install the official `tldraw-org.tldraw-vscode` extension. Diagrams open read-only in a built-in viewer with click-to-navigate support.
 
 ## Quick Start
 
 1. Open a source file (TypeScript, Python, Go, Rust, or Java)
 2. Run **Cmd+Shift+P** > **tldraw: Show Code Diagram**
-3. A `.tldr` diagram opens beside your code showing function call relationships
+3. A `.tldr` diagram opens in the built-in tldraw viewer showing function call relationships
+4. **Click any shape** to jump directly to that function in source code
 
 For Claude-powered diagrams with richer layout:
 
@@ -56,11 +58,13 @@ All commands are in the Command Palette (`Cmd+Shift+P` / `Ctrl+Shift+P`) under t
 
 Navigate from diagram shapes directly back to source code.
 
+**Click-to-navigate (primary)**: Click any shape in a `.tldr` diagram to automatically jump to that function's source code. The extension includes a built-in tldraw viewer — no additional extensions required.
+
 | Command | Keybinding | Description |
 |---|---|---|
 | **Navigate to Function in Diagram** | `Cmd+Shift+G` / `Ctrl+Shift+G` | Lists all navigable shapes in the open `.tldr` diagram — pick one to jump to its source |
 
-**Shape link icons**: Every shape in a generated diagram includes a clickable link icon. Click it to jump directly to the corresponding function in source code via a `vscode://` URI.
+**Shape link icons**: Every shape also includes a clickable link icon (via `vscode://` URI) as an alternative navigation method.
 
 | Diagram Type | How navigation works |
 |---|---|
@@ -89,7 +93,7 @@ Source file (.ts, .py, .go, .rs, .java)
     -> Semantic analysis (roles, shapes, colors)
     -> dagre layout
     -> .tldr file generation
-    -> Opens in tldraw
+    -> Opens in built-in tldraw viewer (click shapes to navigate)
 ```
 
 ### Claude Pipeline (Generate Overview/Detail)
@@ -103,7 +107,7 @@ Source file
     -> Mermaid output extraction
     -> Mermaid -> CallGraph conversion
     -> dagre layout -> .tldr
-    -> Opens in tldraw
+    -> Opens in built-in tldraw viewer
     -> Status bar shows token count + cost
 ```
 
@@ -119,7 +123,7 @@ Workspace
     -> Feature-level prompt to Claude (docs as PRIMARY context)
     -> Claude Sonnet 4.6 API call (8K max tokens)
     -> Mermaid -> .tldr
-    -> Opens in tldraw
+    -> Opens in built-in tldraw viewer
 ```
 
 The project architecture command automatically finds documentation files that describe your project's features, rationale, and design. It scans for:
@@ -251,7 +255,8 @@ Your Anthropic API key is stored using VS Code's [SecretStorage API](https://cod
 
 ## Version History
 
-- **v1.0.0** — Click-to-navigate: jump from diagram shapes to source code via shape link icons or `Cmd+Shift+G` Quick Pick. Fresh line resolution re-parses source with tree-sitter. Architecture diagrams map nodes to real functions via Claude NODE_MAP. Fix mermaid `:::className` parsing. AST cross-reference for Claude-generated diagram line resolution.
+- **v2.0.0** — Built-in tldraw viewer: click any shape to auto-navigate to source code. No longer requires the official tldraw VS Code extension. Diagrams open read-only in our own CustomEditor webview.
+- **v1.0.0** — Click-to-navigate: `Cmd+Shift+G` Quick Pick, shape link icons, fresh line resolution via tree-sitter, architecture node mapping via Claude NODE_MAP, mermaid `:::className` fix, AST cross-reference for Claude-generated diagram line numbers.
 - **v0.6.0** — Documentation-driven architecture: scans project docs (CLAUDE.md, README.md, plans, checkpoints) as primary context for feature-level architecture diagrams instead of directory-structure diagrams
 - **v0.5.0** — Project architecture diagrams: auto-detect modules, cross-module import analysis, Claude-powered architecture generation
 - **v0.4.1** — README documentation
