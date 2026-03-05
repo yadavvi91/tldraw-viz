@@ -241,7 +241,7 @@ export function generateTldr(
 				sourceFile: meta?.sourceFile || graph.fileName,
 				sourceHash: meta?.sourceHash || '',
 				generatedAt: meta?.generatedAt || new Date().toISOString(),
-				generatorVersion: meta?.generatorVersion || '0.3.1',
+				generatorVersion: meta?.generatorVersion || '0.4.0',
 				type: meta?.type || 'file',
 			} satisfies TldrawVizMeta,
 		},

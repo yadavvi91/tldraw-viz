@@ -12,10 +12,13 @@ import { getLanguageConfig } from './languages';
 import { parseMermaid } from './MermaidParser';
 import { mermaidToCallGraph } from './MermaidConverter';
 import { generateOverviewPrompt, generateDetailPrompt } from './StructuralSummary';
+import { ClaudeService, estimateCost } from './ClaudeService';
 import type { CallGraph } from './types';
 import type Parser from 'web-tree-sitter';
 
 let shadowDir: ShadowDirectory | undefined;
+let claudeService: ClaudeService | undefined;
+let statusBarItem: vscode.StatusBarItem | undefined;
 
 async function loadTldrawConfig(workspaceRoot: vscode.Uri): Promise<TldrawConfig> {
 	const configUri = vscode.Uri.joinPath(workspaceRoot, '.tldraw', 'tldraw.config.json');
@@ -489,6 +492,149 @@ async function copyDetailSummary() {
 	await extractAndGeneratePrompt('detail');
 }
 
+/**
+ * Extract call graph from the active editor — shared helper for both
+ * clipboard-based and API-based workflows.
+ */
+async function buildCallGraphFromEditor(): Promise<{
+	graph: CallGraph;
+	content: string;
+	config: ReturnType<typeof getLanguageConfig> & {};
+	fileName: string;
+	sourceUri: vscode.Uri;
+} | undefined> {
+	const editor = vscode.window.activeTextEditor;
+	if (!editor) {
+		vscode.window.showWarningMessage('No active file.');
+		return undefined;
+	}
+
+	const document = editor.document;
+	const content = document.getText();
+	const fileName = vscode.workspace.asRelativePath(document.uri);
+
+	const config = getLanguageConfig(document.languageId);
+	if (!config) {
+		vscode.window.showWarningMessage(
+			`Language "${document.languageId}" is not supported.`,
+		);
+		return undefined;
+	}
+
+	await initParser();
+	const tree = await parseSource(content, config);
+	const nodes = extractNodes(tree, config);
+	const edges = extractEdges(tree, config, nodes);
+	const graph: CallGraph = { nodes, edges, fileName, language: document.languageId };
+	analyze(graph, tree, config);
+
+	return { graph, content, config, fileName, sourceUri: document.uri };
+}
+
+async function setApiKey(context: vscode.ExtensionContext): Promise<void> {
+	const key = await vscode.window.showInputBox({
+		prompt: 'Enter your Anthropic API key',
+		password: true,
+		placeHolder: 'sk-ant-...',
+		ignoreFocusOut: true,
+	});
+	if (key) {
+		await context.secrets.store('tldraw-viz.anthropicApiKey', key);
+		claudeService = new ClaudeService(key);
+		vscode.window.showInformationMessage('Anthropic API key saved.');
+	}
+}
+
+async function clearApiKey(context: vscode.ExtensionContext): Promise<void> {
+	await context.secrets.delete('tldraw-viz.anthropicApiKey');
+	claudeService = undefined;
+	vscode.window.showInformationMessage('Anthropic API key removed.');
+}
+
+async function generateDiagram(
+	promptType: 'overview' | 'detail',
+	context: vscode.ExtensionContext,
+): Promise<void> {
+	if (!claudeService) {
+		const choice = await vscode.window.showWarningMessage(
+			'No Anthropic API key set. Set one now, or use manual copy-paste.',
+			'Set API Key',
+			'Copy to Clipboard',
+		);
+		if (choice === 'Set API Key') return setApiKey(context);
+		if (choice === 'Copy to Clipboard') return extractAndGeneratePrompt(promptType);
+		return;
+	}
+
+	const built = await buildCallGraphFromEditor();
+	if (!built) return;
+
+	const { graph, content, config, fileName, sourceUri } = built;
+
+	const generateFn = promptType === 'overview' ? generateOverviewPrompt : generateDetailPrompt;
+	const prompt = generateFn(graph, content, config);
+
+	await vscode.window.withProgress(
+		{
+			location: vscode.ProgressLocation.Notification,
+			title: `Generating ${promptType} diagram with Claude...`,
+			cancellable: false,
+		},
+		async () => {
+			const result = await claudeService!.generateMermaid(prompt);
+
+			const sd = getShadowDir();
+
+			// Write mermaid to .mmd file
+			const mmdUri = promptType === 'overview'
+				? sd.getMermaidOverviewUri(sourceUri)
+				: sd.getMermaidDetailUri(sourceUri);
+			await vscode.workspace.fs.writeFile(mmdUri, Buffer.from(result.mermaidCode, 'utf-8'));
+
+			// Convert to .tldr directly
+			const mermaidGraph = parseMermaid(result.mermaidCode);
+			const callGraph = mermaidToCallGraph(mermaidGraph, fileName);
+			const layout = layoutCallGraph(callGraph);
+			const tldr = generateTldr(callGraph, {
+				sourceFile: fileName,
+				sourceHash: sd.computeHash(result.mermaidCode),
+				type: 'file',
+			}, layout);
+			const tldrUri = vscode.Uri.file(mmdUri.fsPath.replace(/\.mmd$/, '.tldr'));
+			await vscode.workspace.fs.writeFile(tldrUri, Buffer.from(serializeTldr(tldr), 'utf-8'));
+
+			// Open in tldraw
+			try {
+				await vscode.commands.executeCommand(
+					'vscode.openWith',
+					tldrUri,
+					'tldraw.tldr',
+					vscode.ViewColumn.Beside,
+				);
+			} catch {
+				await vscode.commands.executeCommand(
+					'vscode.open',
+					tldrUri,
+					{ viewColumn: vscode.ViewColumn.Beside },
+				);
+			}
+
+			// Show token usage in status bar
+			updateStatusBar(result.inputTokens, result.outputTokens);
+		},
+	);
+}
+
+function updateStatusBar(inputTokens: number, outputTokens: number): void {
+	if (!statusBarItem) return;
+	const totalTokens = inputTokens + outputTokens;
+	const cost = estimateCost(inputTokens, outputTokens);
+	statusBarItem.text = `$(sparkle) ${totalTokens.toLocaleString()} tokens · ~$${cost.toFixed(4)}`;
+	statusBarItem.tooltip = `Input: ${inputTokens.toLocaleString()} · Output: ${outputTokens.toLocaleString()}`;
+	statusBarItem.show();
+	setTimeout(() => statusBarItem?.hide(), 30_000);
+}
+
 let debounceTimer: ReturnType<typeof setTimeout> | undefined;
 let mermaidDebounceTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -576,7 +722,17 @@ function setupMermaidWatcher(context: vscode.ExtensionContext): void {
 	context.subscriptions.push(watcher);
 }
 
-export function activate(context: vscode.ExtensionContext) {
+export async function activate(context: vscode.ExtensionContext) {
+	// Restore API key from secure storage
+	const apiKey = await context.secrets.get('tldraw-viz.anthropicApiKey');
+	if (apiKey) {
+		claudeService = new ClaudeService(apiKey);
+	}
+
+	// Status bar item for token usage
+	statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
+	context.subscriptions.push(statusBarItem);
+
 	context.subscriptions.push(
 		vscode.commands.registerCommand('tldraw-viz.showDiagram', showDiagram),
 		vscode.commands.registerCommand('tldraw-viz.generateAll', generateAll),
@@ -584,6 +740,10 @@ export function activate(context: vscode.ExtensionContext) {
 		vscode.commands.registerCommand('tldraw-viz.convertMermaid', convertMermaid),
 		vscode.commands.registerCommand('tldraw-viz.copySummary', copySummary),
 		vscode.commands.registerCommand('tldraw-viz.copyDetailSummary', copyDetailSummary),
+		vscode.commands.registerCommand('tldraw-viz.generateOverview', () => generateDiagram('overview', context)),
+		vscode.commands.registerCommand('tldraw-viz.generateDetail', () => generateDiagram('detail', context)),
+		vscode.commands.registerCommand('tldraw-viz.setApiKey', () => setApiKey(context)),
+		vscode.commands.registerCommand('tldraw-viz.clearApiKey', () => clearApiKey(context)),
 	);
 
 	setupFileWatcher(context);

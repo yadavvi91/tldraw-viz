@@ -2,7 +2,7 @@
   "name": "tldraw-viz",
   "displayName": "tldraw Code Visualizer",
   "description": "Auto-generate tldraw call graph diagrams from source code",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "publisher": "yadavvi91",
   "license": "MIT",
   "repository": {
@@ -50,6 +50,26 @@
       {
         "command": "tldraw-viz.copyDetailSummary",
         "title": "Copy Detail Summary for Claude",
+        "category": "tldraw"
+      },
+      {
+        "command": "tldraw-viz.generateOverview",
+        "title": "Generate Overview Diagram with Claude",
+        "category": "tldraw"
+      },
+      {
+        "command": "tldraw-viz.generateDetail",
+        "title": "Generate Detail Diagram with Claude",
+        "category": "tldraw"
+      },
+      {
+        "command": "tldraw-viz.setApiKey",
+        "title": "Set Anthropic API Key",
+        "category": "tldraw"
+      },
+      {
+        "command": "tldraw-viz.clearApiKey",
+        "title": "Clear Anthropic API Key",
         "category": "tldraw"
       }
     ],
@@ -112,6 +132,7 @@
     "vitest": "^2.0.0"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.78.0",
     "@dagrejs/dagre": "^1.1.4",
     "minimatch": "^10.2.4",
     "tree-sitter-wasms": "^0.1.13",
