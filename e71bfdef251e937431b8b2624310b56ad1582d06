@@ -1,0 +1,39 @@
+package.json
+  08a2f92d8bc7b26f 5
+  592d168be9bdb037 156
+src/webview/app.tsx
+  08a2f92d8bc7b26f 1,8-19,47-55,63-64,82,88,110-116,176-223
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.8",
+  "base_commit_sha": "e71bfdef251e937431b8b2624310b56ad1582d06",
+  "prompts": {
+    "08a2f92d8bc7b26f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "98b8bab5-f058-4207-a796-cd16c56169d1",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Vishal Yadav <yadavvi91@gmail.com>",
+      "messages": [],
+      "total_additions": 87,
+      "total_deletions": 5,
+      "accepted_lines": 83,
+      "overriden_lines": 0
+    },
+    "592d168be9bdb037": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ae4054e4-a341-4e25-9182-1a9b82c3d7bb",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Vishal Yadav <yadavvi91@gmail.com>",
+      "messages": [],
+      "total_additions": 19,
+      "total_deletions": 2,
+      "accepted_lines": 19,
+      "overriden_lines": 0
+    }
+  }
+}
