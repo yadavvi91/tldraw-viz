@@ -1234,9 +1234,14 @@ export async function activate(context: vscode.ExtensionContext) {
 	);
 
 	// Register custom editor for .tldr files (renders tldraw + click-to-navigate)
-	context.subscriptions.push(
-		TldrawEditorProvider.register(context, findCurrentLine),
-	);
+	try {
+		context.subscriptions.push(
+			TldrawEditorProvider.register(context, findCurrentLine),
+		);
+		console.log('[tldraw-viz] Extension activation complete');
+	} catch (err) {
+		console.error('[tldraw-viz] FAILED to register custom editor:', err);
+	}
 
 	setupFileWatcher(context);
 	setupMermaidWatcher(context);

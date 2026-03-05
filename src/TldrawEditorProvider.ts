@@ -70,7 +70,8 @@ export class TldrawEditorProvider implements vscode.CustomReadonlyEditorProvider
 		context: vscode.ExtensionContext,
 		findCurrentLine: (root: vscode.Uri, file: string, name: string, fallback: number) => Promise<number>,
 	): vscode.Disposable {
-		return vscode.window.registerCustomEditorProvider(
+		console.log('[tldraw-viz] Registering custom editor provider for viewType:', TldrawEditorProvider.viewType);
+		const disposable = vscode.window.registerCustomEditorProvider(
 			TldrawEditorProvider.viewType,
 			new TldrawEditorProvider(context, findCurrentLine),
 			{
@@ -78,11 +79,15 @@ export class TldrawEditorProvider implements vscode.CustomReadonlyEditorProvider
 				supportsMultipleEditorsPerDocument: true,
 			},
 		);
+		console.log('[tldraw-viz] Custom editor provider registered successfully');
+		return disposable;
 	}
 
 	async openCustomDocument(uri: vscode.Uri): Promise<TldrawDocument> {
+		console.log('[tldraw-viz] openCustomDocument:', uri.toString());
 		const raw = await vscode.workspace.fs.readFile(uri);
 		const fileContents = Buffer.from(raw).toString('utf-8');
+		console.log('[tldraw-viz] openCustomDocument: read', fileContents.length, 'bytes');
 		return new TldrawDocument(uri, fileContents);
 	}
 
@@ -90,13 +95,16 @@ export class TldrawEditorProvider implements vscode.CustomReadonlyEditorProvider
 		document: TldrawDocument,
 		webviewPanel: vscode.WebviewPanel,
 	): Promise<void> {
+		console.log('[tldraw-viz] resolveCustomEditor called for:', document.uri.toString());
 		webviewPanel.webview.options = {
 			enableScripts: true,
 			localResourceRoots: [
 				vscode.Uri.joinPath(this.context.extensionUri, 'dist'),
 			],
 		};
-		webviewPanel.webview.html = this.getHtml(webviewPanel.webview);
+		const html = this.getHtml(webviewPanel.webview);
+		console.log('[tldraw-viz] Setting webview HTML, length:', html.length);
+		webviewPanel.webview.html = html;
 
 		// Only refresh when transitioning from hidden → visible (not on every state change)
 		let wasVisible = webviewPanel.visible;
