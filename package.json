@@ -1,0 +1,91 @@
+{
+  "name": "tldraw-viz",
+  "displayName": "tldraw Code Visualizer",
+  "description": "Auto-generate tldraw call graph diagrams from source code",
+  "version": "0.1.0",
+  "publisher": "yadavvi91",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yadavvi91/tldraw-viz"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Visualization"
+  ],
+  "extensionDependencies": [
+    "tldraw-org.tldraw-vscode"
+  ],
+  "activationEvents": [],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "tldraw-viz.showDiagram",
+        "title": "Show Code Diagram",
+        "category": "tldraw"
+      },
+      {
+        "command": "tldraw-viz.generateAll",
+        "title": "Generate All Diagrams",
+        "category": "tldraw"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "tldraw-viz.showDiagram",
+        "key": "ctrl+shift+d",
+        "mac": "cmd+shift+d",
+        "when": "editorTextFocus"
+      }
+    ],
+    "configuration": {
+      "title": "tldraw Visualizer",
+      "properties": {
+        "tldraw-viz.shadowDir": {
+          "type": "string",
+          "default": ".tldraw",
+          "description": "Name of the shadow directory for diagram files"
+        },
+        "tldraw-viz.minFunctions": {
+          "type": "number",
+          "default": 3,
+          "description": "Minimum number of functions required to generate a diagram"
+        },
+        "tldraw-viz.skipPatterns": {
+          "type": "array",
+          "default": [
+            "**/config.*",
+            "**/*.d.ts",
+            "**/types.*",
+            "**/constants.*"
+          ],
+          "description": "Glob patterns for files to skip during diagram generation"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "node esbuild.mjs",
+    "build:prod": "node esbuild.mjs --production",
+    "watch": "node esbuild.mjs --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "package": "npm run build:prod && vsce package",
+    "lint": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^18.19.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.0.0",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.5.0",
+    "vitest": "^2.0.0"
+  },
+  "dependencies": {
+    "@dagrejs/dagre": "^1.1.4",
+    "web-tree-sitter": "^0.24.4"
+  }
+}
