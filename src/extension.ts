@@ -11,8 +11,9 @@ import { analyze } from './SemanticAnalyzer';
 import { getLanguageConfig } from './languages';
 import { parseMermaid } from './MermaidParser';
 import { mermaidToCallGraph } from './MermaidConverter';
-import { generateOverviewPrompt, generateDetailPrompt } from './StructuralSummary';
+import { generateOverviewPrompt, generateDetailPrompt, generateProjectPrompt } from './StructuralSummary';
 import { ClaudeService, estimateCost } from './ClaudeService';
+import { buildProjectGraph } from './ProjectAnalyzer';
 import type { CallGraph } from './types';
 import type Parser from 'web-tree-sitter';
 
@@ -635,6 +636,91 @@ function updateStatusBar(inputTokens: number, outputTokens: number): void {
 	setTimeout(() => statusBarItem?.hide(), 30_000);
 }
 
+async function generateProjectArchitecture(
+	context: vscode.ExtensionContext,
+): Promise<void> {
+	if (!claudeService) {
+		const choice = await vscode.window.showWarningMessage(
+			'No Anthropic API key set. Set one to generate project architecture.',
+			'Set API Key',
+		);
+		if (choice === 'Set API Key') return setApiKey(context);
+		return;
+	}
+
+	const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri;
+	if (!workspaceRoot) {
+		vscode.window.showWarningMessage('No workspace folder open.');
+		return;
+	}
+
+	const config = await loadTldrawConfig(workspaceRoot);
+	const fileReader = createVscodeFileReader(workspaceRoot);
+	const projectName = path.basename(workspaceRoot.fsPath);
+
+	await vscode.window.withProgress(
+		{
+			location: vscode.ProgressLocation.Notification,
+			title: 'Generating project architecture with Claude...',
+			cancellable: false,
+		},
+		async (progress) => {
+			progress.report({ message: 'Analyzing project structure...' });
+			const projectGraph = await buildProjectGraph(
+				fileReader,
+				workspaceRoot.fsPath,
+				config.modules.length > 0 ? config.modules : undefined,
+				projectName,
+			);
+
+			if (projectGraph.modules.length === 0) {
+				vscode.window.showWarningMessage('No modules found in project.');
+				return;
+			}
+
+			progress.report({ message: 'Generating diagram with Claude...' });
+			const prompt = generateProjectPrompt(projectGraph);
+			const result = await claudeService!.generateMermaid(prompt);
+
+			const sd = getShadowDir();
+			const mmdUri = sd.getProjectMermaidUri();
+			await vscode.workspace.fs.writeFile(mmdUri, Buffer.from(result.mermaidCode, 'utf-8'));
+
+			const mermaidGraph = parseMermaid(result.mermaidCode);
+			const callGraph = mermaidToCallGraph(mermaidGraph, 'project-architecture');
+			const layout = layoutCallGraph(callGraph);
+			const tldr = generateTldr(callGraph, {
+				sourceFile: 'project-architecture',
+				sourceHash: sd.computeHash(result.mermaidCode),
+				type: 'project',
+			}, layout);
+			const tldrUri = sd.getProjectUri();
+			await sd.writeTldr(tldrUri, serializeTldr(tldr));
+
+			try {
+				await vscode.commands.executeCommand(
+					'vscode.openWith',
+					tldrUri,
+					'tldraw.tldr',
+					vscode.ViewColumn.Beside,
+				);
+			} catch {
+				await vscode.commands.executeCommand(
+					'vscode.open',
+					tldrUri,
+					{ viewColumn: vscode.ViewColumn.Beside },
+				);
+			}
+
+			updateStatusBar(result.inputTokens, result.outputTokens);
+
+			vscode.window.showInformationMessage(
+				`Project architecture: ${projectGraph.modules.length} modules, ${projectGraph.dependencies.length} dependencies`,
+			);
+		},
+	);
+}
+
 let debounceTimer: ReturnType<typeof setTimeout> | undefined;
 let mermaidDebounceTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -744,6 +830,7 @@ export async function activate(context: vscode.ExtensionContext) {
 		vscode.commands.registerCommand('tldraw-viz.generateDetail', () => generateDiagram('detail', context)),
 		vscode.commands.registerCommand('tldraw-viz.setApiKey', () => setApiKey(context)),
 		vscode.commands.registerCommand('tldraw-viz.clearApiKey', () => clearApiKey(context)),
+		vscode.commands.registerCommand('tldraw-viz.generateProjectArchitecture', () => generateProjectArchitecture(context)),
 	);
 
 	setupFileWatcher(context);

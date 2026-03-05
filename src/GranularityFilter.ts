@@ -1,9 +1,17 @@
 import { minimatch } from 'minimatch';
 
+export interface ModuleConfig {
+	name: string;
+	/** Glob patterns matching files in this module, e.g. "src/api/**" */
+	include: string[];
+	description?: string;
+}
+
 export interface TldrawConfig {
 	skip: string[];
 	minFunctions: number;
 	flows: FlowConfig[];
+	modules: ModuleConfig[];
 }
 
 export interface FlowConfig {
@@ -15,6 +23,7 @@ export const DEFAULT_CONFIG: TldrawConfig = {
 	skip: ['**/config.*', '**/*.d.ts', '**/types.*', '**/constants.*'],
 	minFunctions: 3,
 	flows: [],
+	modules: [],
 };
 
 /**
@@ -25,6 +34,7 @@ export function parseConfig(raw: Record<string, unknown>): TldrawConfig {
 		skip: Array.isArray(raw.skip) ? raw.skip : DEFAULT_CONFIG.skip,
 		minFunctions: typeof raw.minFunctions === 'number' ? raw.minFunctions : DEFAULT_CONFIG.minFunctions,
 		flows: Array.isArray(raw.flows) ? raw.flows as FlowConfig[] : DEFAULT_CONFIG.flows,
+		modules: Array.isArray(raw.modules) ? raw.modules as ModuleConfig[] : DEFAULT_CONFIG.modules,
 	};
 }
 

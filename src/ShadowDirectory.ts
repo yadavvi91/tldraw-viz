@@ -66,6 +66,24 @@ export class ShadowDirectory {
 		);
 	}
 
+	/** Get the .tldr path for the project architecture diagram */
+	getProjectUri(): vscode.Uri {
+		return vscode.Uri.joinPath(
+			this.workspaceRoot,
+			this.shadowDirName,
+			'project-architecture.tldr',
+		);
+	}
+
+	/** Get the .mmd path for the project architecture diagram */
+	getProjectMermaidUri(): vscode.Uri {
+		return vscode.Uri.joinPath(
+			this.workspaceRoot,
+			this.mermaidDirName,
+			'project-architecture.mmd',
+		);
+	}
+
 	/** Compute a short content hash for staleness detection */
 	computeHash(content: string): string {
 		return crypto

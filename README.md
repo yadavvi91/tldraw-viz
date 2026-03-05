@@ -48,6 +48,7 @@ All commands are in the Command Palette (`Cmd+Shift+P` / `Ctrl+Shift+P`) under t
 |---|---|
 | **Generate Overview Diagram with Claude** | Send the active file's call graph to Claude, get a high-level behavioral mermaid flowchart back, and open as tldraw. Uses ~$0.01-0.02 per diagram. |
 | **Generate Detail Diagram with Claude** | Same pipeline but generates a detailed function-level flowchart with every call chain and branch. |
+| **Generate Project Architecture with Claude** | Scan the entire workspace, discover modules, analyze cross-module imports, and generate a high-level architecture diagram showing module dependencies. |
 | **Set Anthropic API Key** | Store your Anthropic API key securely (encrypted via VS Code secrets). |
 | **Clear Anthropic API Key** | Remove the stored API key. |
 
@@ -126,6 +127,34 @@ Each flow traces function calls starting from `entrypoint` across imported files
 
 Run **tldraw: Generate Flow Diagrams** to generate all configured flows.
 
+### Module Configuration (Project Architecture)
+
+Define modules for the project architecture diagram. If omitted, modules are auto-detected from top-level directories under `src/`.
+
+```json
+{
+  "modules": [
+    {
+      "name": "Backend API",
+      "include": ["src/api/**", "src/services/**"],
+      "description": "REST API and service layer"
+    },
+    {
+      "name": "Frontend UI",
+      "include": ["src/components/**", "src/pages/**"],
+      "description": "React components and pages"
+    },
+    {
+      "name": "Data Layer",
+      "include": ["src/data/**", "src/store/**"],
+      "description": "State management and data fetching"
+    }
+  ]
+}
+```
+
+Run **tldraw: Generate Project Architecture with Claude** to generate the architecture diagram.
+
 ## Shadow Directories
 
 Generated files are stored in shadow directories that mirror your project structure:
@@ -176,6 +205,7 @@ Your Anthropic API key is stored using VS Code's [SecretStorage API](https://cod
 
 ## Version History
 
+- **v0.5.0** — Project architecture diagrams: auto-detect modules, cross-module import analysis, Claude-powered architecture generation
 - **v0.4.1** — README documentation
 - **v0.4.0** — Claude API integration: one-click diagram generation, API key management, status bar token/cost display
 - **v0.3.1** — Two-level prompts (overview + detail), `.mermaid` shadow directory, classDef styles

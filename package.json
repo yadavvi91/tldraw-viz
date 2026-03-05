@@ -2,7 +2,7 @@
   "name": "tldraw-viz",
   "displayName": "tldraw Code Visualizer",
   "description": "Auto-generate tldraw call graph diagrams from source code",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "publisher": "yadavvi91",
   "license": "MIT",
   "repository": {
@@ -70,6 +70,11 @@
       {
         "command": "tldraw-viz.clearApiKey",
         "title": "Clear Anthropic API Key",
+        "category": "tldraw"
+      },
+      {
+        "command": "tldraw-viz.generateProjectArchitecture",
+        "title": "Generate Project Architecture with Claude",
         "category": "tldraw"
       }
     ],

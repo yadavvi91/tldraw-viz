@@ -1,5 +1,6 @@
 import type { CallGraph, CodeNode, CodeEdge } from './types';
 import type { LanguageConfig } from './languages';
+import type { ProjectGraph } from './ProjectAnalyzer';
 
 /**
  * Extract React-specific details from source content using regex.
@@ -262,6 +263,69 @@ export function generateDetailPrompt(
 	lines.push('## Important');
 	lines.push('- Return ONLY the mermaid code block, no explanation');
 	lines.push('- Be thorough: every function, every branch, every callback');
+	lines.push('- Every node must have a class assignment');
+
+	return lines.join('\n');
+}
+
+/**
+ * Generate a Claude prompt for a PROJECT-LEVEL architecture diagram.
+ * Shows modules as subgraphs with key components, and dependency arrows between modules.
+ */
+export function generateProjectPrompt(projectGraph: ProjectGraph): string {
+	const lines: string[] = [];
+
+	lines.push('Generate a PROJECT-LEVEL ARCHITECTURE mermaid flowchart.');
+	lines.push('');
+	lines.push('## Goal');
+	lines.push('Show the high-level module structure of this project.');
+	lines.push('Each module should be a subgraph containing its key exported components (top 5).');
+	lines.push('Show dependency arrows between modules based on import relationships.');
+	lines.push('Labels should be human-readable (e.g. "Authentication", "API Layer", "Data Models").');
+	lines.push('');
+	lines.push(`## Project: ${projectGraph.projectName}`);
+	lines.push('');
+
+	lines.push('## Modules');
+	lines.push('');
+	for (const mod of projectGraph.modules) {
+		lines.push(`### ${mod.name} (${mod.fileCount} files)`);
+		if (mod.description) {
+			lines.push(`  Description: ${mod.description}`);
+		}
+		if (mod.exports.length > 0) {
+			const shown = mod.exports.slice(0, 10);
+			lines.push(`  Key exports: ${shown.join(', ')}${mod.exports.length > 10 ? '...' : ''}`);
+		}
+		lines.push('');
+	}
+
+	lines.push('## Dependencies');
+	lines.push('');
+	for (const dep of projectGraph.dependencies) {
+		const symbolStr = dep.importedSymbols.length > 0
+			? ` (uses: ${dep.importedSymbols.join(', ')})`
+			: '';
+		lines.push(`  ${dep.from} --> ${dep.to} [${dep.importCount} imports]${symbolStr}`);
+	}
+	lines.push('');
+
+	lines.push(...getMermaidStyleInstructions());
+
+	lines.push('');
+	lines.push('## Additional module-level styles');
+	lines.push('Add these classDef styles:');
+	lines.push('```');
+	lines.push('classDef module fill:#E8EAF6,stroke:#283593,color:#1A237E');
+	lines.push('classDef external fill:#FFF8E1,stroke:#F57F17,color:#E65100');
+	lines.push('```');
+	lines.push('');
+	lines.push('## Important');
+	lines.push('- Return ONLY the mermaid code block, no explanation');
+	lines.push('- Use subgraphs for each module, with key components as nodes inside');
+	lines.push('- Show dependency arrows between modules with labels describing the relationship');
+	lines.push('- Use thick arrows (==>) for heavy dependencies (3+ imports)');
+	lines.push('- Use dotted arrows (-.->)  for light dependencies (1 import)');
 	lines.push('- Every node must have a class assignment');
 
 	return lines.join('\n');

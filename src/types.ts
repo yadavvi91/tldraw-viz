@@ -136,5 +136,5 @@ export interface TldrawVizMeta {
 	sourceHash: string;
 	generatedAt: string;
 	generatorVersion: string;
-	type: 'file' | 'flow';
+	type: 'file' | 'flow' | 'project';
 }
