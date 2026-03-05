@@ -613,7 +613,7 @@ async function generateDiagram(
 			const astLineMap = new Map(graph.nodes.map(n => [n.name, n.line]));
 			for (const node of callGraph.nodes) {
 				if (node.line === 0) {
-					node.line = astLineMap.get(node.name) || astLineMap.get(node.id) || 0;
+					node.line = astLineMap.get(node.name) || astLineMap.get(node.id) || astLineMap.get(node.label || '') || 0;
 				}
 			}
 

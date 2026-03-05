@@ -98,11 +98,14 @@ export class TldrawEditorProvider implements vscode.CustomReadonlyEditorProvider
 		};
 		webviewPanel.webview.html = this.getHtml(webviewPanel.webview);
 
-		// When the panel becomes visible again, tell the webview to refresh tldraw
+		// Only refresh when transitioning from hidden → visible (not on every state change)
+		let wasVisible = webviewPanel.visible;
 		webviewPanel.onDidChangeViewState(() => {
-			if (webviewPanel.visible) {
+			const isVisible = webviewPanel.visible;
+			if (isVisible && !wasVisible) {
 				webviewPanel.webview.postMessage({ type: 'refresh' });
 			}
+			wasVisible = isVisible;
 		});
 
 		webviewPanel.webview.onDidReceiveMessage(

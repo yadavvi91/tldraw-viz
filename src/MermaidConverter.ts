@@ -75,7 +75,7 @@ export function mermaidToCallGraph(graph: MermaidGraph, fileName: string, nodeMa
 		const mapping = nodeMapping?.[mNode.id];
 		nodes.push({
 			id: mNode.id,
-			name: mNode.id,
+			name: mapping?.name || mNode.label || mNode.id,
 			type: 'function',
 			line: mapping?.line || 0,
 			role: ROLE_MAP[mNode.shape],
