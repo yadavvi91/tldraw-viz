@@ -133,7 +133,8 @@ function parseInlineNode(
 	token: string,
 	nodeMap: Map<string, MermaidNode>,
 ): string {
-	const t = token.trim();
+	// Strip :::className suffix before parsing
+	const t = token.trim().replace(/:::\w+$/, '').trim();
 	if (!t) return t;
 
 	// Find where the shape definition starts
@@ -151,7 +152,7 @@ function parseInlineNode(
 		}
 	}
 
-	// Bare node id
+	// Bare node id (strip any remaining :::className)
 	registerNode(nodeMap, t);
 	return t;
 }
@@ -368,15 +369,17 @@ function tryParseNodeDef(
 	nodeMap: Map<string, MermaidNode>,
 	subgraphStack: MermaidSubgraph[],
 ): boolean {
+	// Strip :::className suffix before parsing
+	const stripped = line.replace(/:::\w+$/, '').trim();
 	// Match: nodeId[label], nodeId([label]), nodeId{label}, etc.
 	const shapeStarts = ['([', '((', '{{', '[[', '[/', '[\\', '[', '(', '{', '>'];
 	for (const start of shapeStarts) {
-		const idx = line.indexOf(start);
+		const idx = stripped.indexOf(start);
 		if (idx > 0) {
-			const id = line.slice(0, idx).trim();
+			const id = stripped.slice(0, idx).trim();
 			// Validate id is a simple identifier (no spaces or operators)
 			if (/^[\w-]+$/.test(id)) {
-				const rest = line.slice(idx);
+				const rest = stripped.slice(idx);
 				const def = parseNodeDef(rest);
 				if (def) {
 					registerNode(nodeMap, id, def.label, def.shape);

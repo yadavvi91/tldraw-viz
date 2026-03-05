@@ -317,6 +317,22 @@ function generateFeatureLevelPrompt(projectGraph: ProjectGraph): string {
 	lines.push(`Modules: ${projectGraph.modules.map(m => `${m.name} (${m.fileCount} files)`).join(', ')}`);
 	lines.push('');
 
+	// Include representative functions for source mapping
+	const hasRepFuncs = projectGraph.modules.some(m => m.representativeFunctions && m.representativeFunctions.length > 0);
+	if (hasRepFuncs) {
+		lines.push('## Available source functions (for NODE_MAP)');
+		lines.push('');
+		for (const mod of projectGraph.modules) {
+			if (mod.representativeFunctions && mod.representativeFunctions.length > 0) {
+				lines.push(`### ${mod.name}`);
+				for (const fn of mod.representativeFunctions) {
+					lines.push(`  - ${fn.name} (${fn.file}:${fn.line})`);
+				}
+				lines.push('');
+			}
+		}
+	}
+
 	if (projectGraph.dependencies.length > 0) {
 		lines.push('Key dependency relationships:');
 		const sorted = [...projectGraph.dependencies].sort((a, b) => b.importCount - a.importCount);
@@ -353,6 +369,20 @@ function generateFeatureLevelPrompt(projectGraph: ProjectGraph): string {
 	lines.push('- Aim for 8-15 subgraphs with 2-5 nodes each');
 	lines.push('- Every node must have a class assignment');
 
+	if (hasRepFuncs) {
+		lines.push('');
+		lines.push('## Source mapping (NODE_MAP)');
+		lines.push('After the mermaid code block, for each node in the diagram, output a comment mapping it to the closest matching source function.');
+		lines.push('Format: `%% NODE_MAP: nodeId -> file:line:functionName`');
+		lines.push('Example:');
+		lines.push('```');
+		lines.push('%% NODE_MAP: searchCity -> src/services/geocoding.ts:45:searchCity');
+		lines.push('%% NODE_MAP: fetchBuildings -> src/services/buildings.ts:12:fetchBuildingFootprints');
+		lines.push('```');
+		lines.push('Use the "Available source functions" section above to find the best match for each node.');
+		lines.push('If no good match exists for a node, omit its NODE_MAP entry.');
+	}
+
 	return lines.join('\n');
 }
 
@@ -373,6 +403,7 @@ function generateModuleStructurePrompt(projectGraph: ProjectGraph): string {
 
 	lines.push('## Modules');
 	lines.push('');
+	const hasRepFuncs = projectGraph.modules.some(m => m.representativeFunctions && m.representativeFunctions.length > 0);
 	for (const mod of projectGraph.modules) {
 		lines.push(`### ${mod.name} (${mod.fileCount} files)`);
 		if (mod.description) {
@@ -381,6 +412,12 @@ function generateModuleStructurePrompt(projectGraph: ProjectGraph): string {
 		if (mod.exports.length > 0) {
 			const shown = mod.exports.slice(0, 10);
 			lines.push(`  Key exports: ${shown.join(', ')}${mod.exports.length > 10 ? '...' : ''}`);
+		}
+		if (mod.representativeFunctions && mod.representativeFunctions.length > 0) {
+			lines.push('  Source functions:');
+			for (const fn of mod.representativeFunctions) {
+				lines.push(`    - ${fn.name} (${fn.file}:${fn.line})`);
+			}
 		}
 		lines.push('');
 	}
@@ -412,6 +449,20 @@ function generateModuleStructurePrompt(projectGraph: ProjectGraph): string {
 	lines.push('- Use thick arrows (==>) for heavy dependencies (3+ imports)');
 	lines.push('- Use dotted arrows (-.->)  for light dependencies (1 import)');
 	lines.push('- Every node must have a class assignment');
+
+	if (hasRepFuncs) {
+		lines.push('');
+		lines.push('## Source mapping (NODE_MAP)');
+		lines.push('After the mermaid code block, for each node in the diagram, output a comment mapping it to the closest matching source function.');
+		lines.push('Format: `%% NODE_MAP: nodeId -> file:line:functionName`');
+		lines.push('Example:');
+		lines.push('```');
+		lines.push('%% NODE_MAP: searchCity -> src/services/geocoding.ts:45:searchCity');
+		lines.push('%% NODE_MAP: fetchBuildings -> src/services/buildings.ts:12:fetchBuildingFootprints');
+		lines.push('```');
+		lines.push('Use the "Source functions" listed above to find the best match for each node.');
+		lines.push('If no good match exists for a node, omit its NODE_MAP entry.');
+	}
 
 	return lines.join('\n');
 }

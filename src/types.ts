@@ -46,6 +46,8 @@ export interface CodeNode {
 	groupId?: string;
 	/** Display label (overrides default "name()" text in diagram) */
 	label?: string;
+	/** Source file path (relative to workspace root, for cross-file diagrams) */
+	sourceFile?: string;
 }
 
 /** A directed edge in the call graph */

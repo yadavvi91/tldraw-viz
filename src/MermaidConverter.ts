@@ -50,11 +50,14 @@ const EDGE_STYLE_MAP: Record<MermaidEdgeStyle, EdgeStyle> = {
 	thick: 'dashed',
 };
 
+/** Source mapping for architecture diagram nodes */
+export type NodeSourceMapping = Record<string, { file: string; line: number; name: string }>;
+
 /**
  * Convert a parsed MermaidGraph into a CallGraph that can be fed
  * into the existing dagre layout → TldrWriter pipeline.
  */
-export function mermaidToCallGraph(graph: MermaidGraph, fileName: string): CallGraph {
+export function mermaidToCallGraph(graph: MermaidGraph, fileName: string, nodeMapping?: NodeSourceMapping): CallGraph {
 	const nodes: CodeNode[] = [];
 	const edges: CodeEdge[] = [];
 	const groups: NodeGroup[] = [];
@@ -69,16 +72,18 @@ export function mermaidToCallGraph(graph: MermaidGraph, fileName: string): CallG
 
 	// Convert nodes
 	for (const mNode of graph.nodes) {
+		const mapping = nodeMapping?.[mNode.id];
 		nodes.push({
 			id: mNode.id,
 			name: mNode.id,
 			type: 'function',
-			line: 0,
+			line: mapping?.line || 0,
 			role: ROLE_MAP[mNode.shape],
 			shape: SHAPE_MAP[mNode.shape],
 			color: COLOR_MAP[mNode.shape],
 			label: mNode.label,
 			groupId: nodeToSubgraph.get(mNode.id),
+			sourceFile: mapping?.file,
 		});
 	}
 

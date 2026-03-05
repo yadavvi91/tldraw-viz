@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 
 export interface GenerationResult {
 	mermaidCode: string;
+	rawText: string;
 	inputTokens: number;
 	outputTokens: number;
 }
@@ -29,6 +30,7 @@ export class ClaudeService {
 
 		return {
 			mermaidCode,
+			rawText: text,
 			inputTokens: message.usage.input_tokens,
 			outputTokens: message.usage.output_tokens,
 		};

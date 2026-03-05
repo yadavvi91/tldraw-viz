@@ -2,7 +2,7 @@
   "name": "tldraw-viz",
   "displayName": "tldraw Code Visualizer",
   "description": "Auto-generate tldraw call graph diagrams from source code",
-  "version": "0.7.0",
+  "version": "1.0.0",
   "publisher": "yadavvi91",
   "license": "MIT",
   "repository": {
@@ -81,6 +81,11 @@
         "command": "tldraw-viz.generateFlowWithClaude",
         "title": "Generate Flow Diagram with Claude",
         "category": "tldraw"
+      },
+      {
+        "command": "tldraw-viz.navigateToFunction",
+        "title": "Navigate to Function in Diagram",
+        "category": "tldraw"
       }
     ],
     "keybindings": [
@@ -89,6 +94,11 @@
         "key": "ctrl+shift+d",
         "mac": "cmd+shift+d",
         "when": "editorTextFocus"
+      },
+      {
+        "command": "tldraw-viz.navigateToFunction",
+        "key": "ctrl+shift+g",
+        "mac": "cmd+shift+g"
       }
     ],
     "configuration": {
@@ -118,6 +128,11 @@
             "**/constants.*"
           ],
           "description": "Glob patterns for files to skip during diagram generation"
+        },
+        "tldraw-viz.freshLineLookup": {
+          "type": "boolean",
+          "default": true,
+          "description": "Re-parse source to find current function line numbers when navigating from diagrams"
         }
       }
     }

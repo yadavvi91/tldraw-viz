@@ -205,6 +205,27 @@ describe('MermaidParser', () => {
     class A myClass`);
 			expect(graph.nodes).toHaveLength(1);
 		});
+
+		it('strips :::className suffix from node definitions', () => {
+			const graph = parseMermaid(`flowchart TD
+    A([User provides data]):::userAction
+    B[Process data]:::process
+    A --> B`);
+			expect(graph.nodes).toHaveLength(2);
+			expect(graph.nodes.find(n => n.id === 'A')?.label).toBe('User provides data');
+			expect(graph.nodes.find(n => n.id === 'A')?.shape).toBe('stadium');
+			expect(graph.nodes.find(n => n.id === 'B')?.label).toBe('Process data');
+			expect(graph.nodes.find(n => n.id === 'B')?.shape).toBe('rectangle');
+		});
+
+		it('strips :::className from inline node definitions in edges', () => {
+			const graph = parseMermaid(`flowchart TD
+    A([Start]):::userAction ==>|data| B{Decision}:::decision`);
+			expect(graph.nodes).toHaveLength(2);
+			expect(graph.nodes.find(n => n.id === 'A')?.label).toBe('Start');
+			expect(graph.nodes.find(n => n.id === 'B')?.label).toBe('Decision');
+			expect(graph.nodes.find(n => n.id === 'B')?.shape).toBe('diamond');
+		});
 	});
 
 	describe('empty/minimal input', () => {

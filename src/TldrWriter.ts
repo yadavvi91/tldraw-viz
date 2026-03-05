@@ -99,11 +99,29 @@ function makeFrameShape(
 	};
 }
 
+/** Build a vscode:// navigation URL for a shape */
+function buildNavigationUrl(
+	sourceFile: string,
+	line: number,
+	name: string,
+): string {
+	if (!sourceFile || line === 0) {
+		return '';
+	}
+	const params = new URLSearchParams({
+		file: sourceFile,
+		line: String(line),
+		name,
+	});
+	return `vscode://yadavvi91.tldraw-viz/navigate?${params.toString()}`;
+}
+
 /** Create a geo shape record with role-aware visual properties */
 function makeGeoShape(
 	node: PositionedNode,
 	index: string,
 	parentId: string,
+	documentSourceFile: string,
 ): TldrRecord {
 	const geo = node.shape ? (ROLE_SHAPE_MAP[node.shape] || 'rectangle') : 'rectangle';
 	const color = node.color
@@ -111,6 +129,8 @@ function makeGeoShape(
 		|| TYPE_COLOR_MAP[node.type]
 		|| 'black';
 	const text = node.label || (node.parent ? `${node.parent}.${node.name}()` : `${node.name}()`);
+	const shapeSourceFile = node.sourceFile || documentSourceFile;
+	const url = buildNavigationUrl(shapeSourceFile, node.line, node.name);
 
 	return {
 		id: `shape:${node.id}`,
@@ -137,13 +157,14 @@ function makeGeoShape(
 			verticalAlign: 'middle',
 			growY: 0,
 			labelColor: 'black',
-			url: '',
+			url,
 			scale: 1,
 		},
 		meta: {
 			sourceLine: node.line,
 			sourceType: node.type,
 			sourceName: node.name,
+			...(node.sourceFile ? { sourceFile: node.sourceFile } : {}),
 			...(node.role ? { role: node.role } : {}),
 		},
 	};
@@ -265,6 +286,7 @@ export function generateTldr(
 
 	// Build a set of node IDs to their group for parent assignment
 	const nodeToFrame = new Map<string, string>();
+	const documentSourceFile = meta?.sourceFile || graph.fileName;
 
 	let shapeIndex = 0;
 
@@ -290,7 +312,7 @@ export function generateTldr(
 			}
 		}
 		const adjusted = { ...node, x, y };
-		records.push(makeGeoShape(adjusted, makeIndex(shapeIndex++), parentShapeId));
+		records.push(makeGeoShape(adjusted, makeIndex(shapeIndex++), parentShapeId, documentSourceFile));
 	}
 
 	// Create arrows and bindings for each edge

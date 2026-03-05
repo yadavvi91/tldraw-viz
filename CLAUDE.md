@@ -39,6 +39,7 @@ No webview code. We generate `.tldr` files and open them with the official tldra
 - **Call graph pipeline**: `CodeAnalyzer` (parse) → `CallGraphExtractor` (edges) → `DiagramGenerator` (layout + shapes)
 - **Granularity filtering** in `GranularityFilter.ts` — skip trivial files (config, constants, types)
 - **Code flows** traced cross-file by `FlowTracer.ts` using import resolution
+- **Click-to-navigate** — each diagram shape has a `vscode://` URI in its `url` prop + a Quick Pick command (`Cmd+Shift+G`)
 
 ## Supported Languages
 
@@ -54,6 +55,7 @@ Generated diagrams live in `.tldraw/` at the project root, mirroring the source 
 ├── flows/                          # Cross-file execution flows
 │   ├── authentication.tldr
 │   └── api-request.tldr
+├── project-architecture.tldr       # Whole-project overview (Claude-generated)
 └── tldraw.config.json              # Skip patterns, flow config
 ```
 

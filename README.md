@@ -52,6 +52,24 @@ All commands are in the Command Palette (`Cmd+Shift+P` / `Ctrl+Shift+P`) under t
 | **Set Anthropic API Key** | Store your Anthropic API key securely (encrypted via VS Code secrets). |
 | **Clear Anthropic API Key** | Remove the stored API key. |
 
+### Code Navigation
+
+Navigate from diagram shapes directly back to source code.
+
+| Command | Keybinding | Description |
+|---|---|---|
+| **Navigate to Function in Diagram** | `Cmd+Shift+G` / `Ctrl+Shift+G` | Lists all navigable shapes in the open `.tldr` diagram — pick one to jump to its source |
+
+**Shape link icons**: Every shape in a generated diagram includes a clickable link icon. Click it to jump directly to the corresponding function in source code via a `vscode://` URI.
+
+| Diagram Type | How navigation works |
+|---|---|
+| **Per-file** (e.g. `login.ts.tldr`) | Each shape links to its function in the source file |
+| **Flow** (cross-file) | Each shape knows its own source file and line |
+| **Architecture** (Claude-generated) | Claude maps nodes to real source functions via `NODE_MAP` comments |
+
+**Fresh line resolution**: When `tldraw-viz.freshLineLookup` is enabled (default), navigation re-parses the source file with tree-sitter to find the function's *current* line number — handles stale diagrams where code was edited after generation.
+
 ### Clipboard Fallback (no API key needed)
 
 | Command | Description |
@@ -128,6 +146,7 @@ If no documentation is found, it falls back to a module-structure diagram based 
 | `tldraw-viz.mermaidDir` | `.mermaid` | Directory for generated `.mmd` files |
 | `tldraw-viz.minFunctions` | `3` | Minimum functions required to generate a diagram |
 | `tldraw-viz.skipPatterns` | `["**/config.*", "**/*.d.ts", "**/types.*", "**/constants.*"]` | Glob patterns for files to skip |
+| `tldraw-viz.freshLineLookup` | `true` | Re-parse source to find current function line numbers when navigating from diagrams |
 
 ### Flow Configuration
 
@@ -232,6 +251,7 @@ Your Anthropic API key is stored using VS Code's [SecretStorage API](https://cod
 
 ## Version History
 
+- **v1.0.0** — Click-to-navigate: jump from diagram shapes to source code via shape link icons or `Cmd+Shift+G` Quick Pick. Fresh line resolution re-parses source with tree-sitter. Architecture diagrams map nodes to real functions via Claude NODE_MAP. Fix mermaid `:::className` parsing. AST cross-reference for Claude-generated diagram line resolution.
 - **v0.6.0** — Documentation-driven architecture: scans project docs (CLAUDE.md, README.md, plans, checkpoints) as primary context for feature-level architecture diagrams instead of directory-structure diagrams
 - **v0.5.0** — Project architecture diagrams: auto-detect modules, cross-module import analysis, Claude-powered architecture generation
 - **v0.4.1** — README documentation

@@ -3,6 +3,15 @@ import { minimatch } from 'minimatch';
 import type { FileReader } from './FlowTracer';
 import type { ModuleConfig } from './GranularityFilter';
 import type { ProjectDocumentation } from './DocumentationScanner';
+import { initParser, parseSource, extractNodes } from './CodeAnalyzer';
+import { extensionToLanguage, getLanguageConfig } from './languages';
+
+export interface RepresentativeFunction {
+	name: string;
+	file: string;
+	line: number;
+	type: 'function' | 'method' | 'class';
+}
 
 export interface ProjectModule {
 	name: string;
@@ -10,6 +19,7 @@ export interface ProjectModule {
 	files: string[];
 	exports: string[];
 	fileCount: number;
+	representativeFunctions?: RepresentativeFunction[];
 }
 
 export interface ModuleDependency {
@@ -268,6 +278,62 @@ export async function analyzeModuleDependencies(
  * Build a complete project graph by discovering modules,
  * scanning exports, and analyzing dependencies.
  */
+/**
+ * Collect representative exported functions from a module's files.
+ * Uses tree-sitter to find functions that match known exports.
+ */
+async function collectRepresentativeFunctions(
+	mod: ProjectModule,
+	fileReader: FileReader,
+	workspaceRoot: string,
+): Promise<RepresentativeFunction[]> {
+	const exportSet = new Set(mod.exports);
+	const results: RepresentativeFunction[] = [];
+
+	await initParser();
+
+	// Only scan top files to limit cost
+	const filesToScan = mod.files.slice(0, 10);
+	for (const filePath of filesToScan) {
+		const ext = path.extname(filePath);
+		const langKey = extensionToLanguage(ext);
+		if (!langKey) continue;
+
+		const config = getLanguageConfig(langKey);
+		if (!config) continue;
+
+		let content: string;
+		try {
+			content = await fileReader.readFile(filePath);
+		} catch {
+			continue;
+		}
+
+		try {
+			const tree = await parseSource(content, config);
+			const nodes = extractNodes(tree, config);
+			const relPath = path.relative(workspaceRoot, filePath);
+
+			for (const node of nodes) {
+				if (exportSet.has(node.name) && (node.type === 'function' || node.type === 'method' || node.type === 'class')) {
+					results.push({
+						name: node.name,
+						file: relPath,
+						line: node.line,
+						type: node.type,
+					});
+				}
+			}
+		} catch {
+			continue;
+		}
+
+		if (results.length >= 10) break;
+	}
+
+	return results.slice(0, 10);
+}
+
 export async function buildProjectGraph(
 	fileReader: FileReader,
 	workspaceRoot: string,
@@ -290,6 +356,13 @@ export async function buildProjectGraph(
 			}
 		}
 		mod.exports = [...new Set(allExports)].slice(0, 20);
+	}
+
+	// Collect representative functions with file+line for each module
+	for (const mod of modules) {
+		mod.representativeFunctions = await collectRepresentativeFunctions(
+			mod, fileReader, workspaceRoot,
+		);
 	}
 
 	const dependencies = await analyzeModuleDependencies(modules, fileReader, workspaceRoot);

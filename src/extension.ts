@@ -8,9 +8,9 @@ import { generateTldr, serializeTldr } from './TldrWriter';
 import { DEFAULT_CONFIG, parseConfig, shouldSkipFile, hasEnoughSubstance, type TldrawConfig } from './GranularityFilter';
 import { traceFlow, type FileReader } from './FlowTracer';
 import { analyze } from './SemanticAnalyzer';
-import { getLanguageConfig } from './languages';
+import { getLanguageConfig, extensionToLanguage } from './languages';
 import { parseMermaid } from './MermaidParser';
-import { mermaidToCallGraph } from './MermaidConverter';
+import { mermaidToCallGraph, type NodeSourceMapping } from './MermaidConverter';
 import { generateOverviewPrompt, generateDetailPrompt, generateProjectPrompt, generateFlowPrompt } from './StructuralSummary';
 import { ClaudeService, estimateCost } from './ClaudeService';
 import { buildProjectGraph } from './ProjectAnalyzer';
@@ -264,6 +264,7 @@ async function generateAll() {
 							nodes: flow.nodes.map(n => ({
 								...n,
 								name: `${n.name} [${path.basename(n.sourceFile)}]`,
+								sourceFile: path.relative(workspaceRoot.fsPath, n.sourceFile),
 							})),
 							edges: flow.edges,
 							fileName: flowConfig.name,
@@ -355,6 +356,7 @@ async function generateFlows() {
 					...n,
 					// For flow diagrams, show source file in the label
 					name: `${n.name} [${path.basename(n.sourceFile)}]`,
+					sourceFile: path.relative(workspaceRoot.fsPath, n.sourceFile),
 				})),
 				edges: flow.edges,
 				fileName: flowConfig.name,
@@ -608,6 +610,15 @@ async function generateDiagram(
 			// Convert to .tldr directly
 			const mermaidGraph = parseMermaid(result.mermaidCode);
 			const callGraph = mermaidToCallGraph(mermaidGraph, fileName);
+
+			// Resolve lines from AST-parsed call graph for Claude-generated nodes
+			const astLineMap = new Map(graph.nodes.map(n => [n.name, n.line]));
+			for (const node of callGraph.nodes) {
+				if (node.line === 0) {
+					node.line = astLineMap.get(node.name) || astLineMap.get(node.id) || 0;
+				}
+			}
+
 			const layout = layoutCallGraph(callGraph);
 			const tldr = generateTldr(callGraph, {
 				sourceFile: fileName,
@@ -647,6 +658,21 @@ function updateStatusBar(inputTokens: number, outputTokens: number): void {
 	statusBarItem.tooltip = `Input: ${inputTokens.toLocaleString()} · Output: ${outputTokens.toLocaleString()}`;
 	statusBarItem.show();
 	setTimeout(() => statusBarItem?.hide(), 30_000);
+}
+
+/** Parse NODE_MAP comments from Claude's raw output */
+function parseNodeMap(rawText: string): NodeSourceMapping {
+	const mapping: NodeSourceMapping = {};
+	const regex = /%%\s*NODE_MAP:\s*(\S+)\s*->\s*([^:]+):(\d+):(\S+)/g;
+	let match: RegExpExecArray | null;
+	while ((match = regex.exec(rawText)) !== null) {
+		mapping[match[1]] = {
+			file: match[2].trim(),
+			line: parseInt(match[3], 10),
+			name: match[4].trim(),
+		};
+	}
+	return mapping;
 }
 
 async function generateProjectArchitecture(
@@ -706,8 +732,9 @@ async function generateProjectArchitecture(
 			const mmdUri = sd.getProjectMermaidUri();
 			await vscode.workspace.fs.writeFile(mmdUri, Buffer.from(result.mermaidCode, 'utf-8'));
 
+			const nodeMapping = parseNodeMap(result.rawText);
 			const mermaidGraph = parseMermaid(result.mermaidCode);
-			const callGraph = mermaidToCallGraph(mermaidGraph, 'project-architecture');
+			const callGraph = mermaidToCallGraph(mermaidGraph, 'project-architecture', nodeMapping);
 			const layout = layoutCallGraph(callGraph);
 			const tldr = generateTldr(callGraph, {
 				sourceFile: 'project-architecture',
@@ -893,6 +920,36 @@ async function generateFlowWithClaude(
 	);
 }
 
+/**
+ * Quick-parse a source file to find the current line number of a function.
+ * Used to resolve stale line numbers when navigating from diagrams.
+ */
+async function findCurrentLine(
+	workspaceRoot: vscode.Uri,
+	file: string,
+	functionName: string,
+	fallbackLine: number,
+): Promise<number> {
+	try {
+		const fileUri = vscode.Uri.joinPath(workspaceRoot, file);
+		const doc = await vscode.workspace.openTextDocument(fileUri);
+		const ext = path.extname(file);
+		const langKey = extensionToLanguage(ext);
+		if (!langKey) return fallbackLine;
+
+		const config = getLanguageConfig(langKey);
+		if (!config) return fallbackLine;
+
+		await initParser();
+		const tree = await parseSource(doc.getText(), config);
+		const nodes = extractNodes(tree, config);
+		const match = nodes.find(n => n.name === functionName);
+		return match?.line || fallbackLine;
+	} catch {
+		return fallbackLine;
+	}
+}
+
 let debounceTimer: ReturnType<typeof setTimeout> | undefined;
 let mermaidDebounceTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -980,6 +1037,172 @@ function setupMermaidWatcher(context: vscode.ExtensionContext): void {
 	context.subscriptions.push(watcher);
 }
 
+/** URI handler for vscode://yadavvi91.tldraw-viz/navigate?file=X&line=Y&name=Z */
+class NavigationUriHandler implements vscode.UriHandler {
+	async handleUri(uri: vscode.Uri): Promise<void> {
+		if (uri.path !== '/navigate') return;
+
+		const params = new URLSearchParams(uri.query);
+		const file = params.get('file');
+		const lineStr = params.get('line');
+		const name = params.get('name');
+
+		if (!file) {
+			vscode.window.showWarningMessage('Navigation URI missing file parameter.');
+			return;
+		}
+
+		const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri;
+		if (!workspaceRoot) {
+			vscode.window.showWarningMessage('No workspace folder open.');
+			return;
+		}
+
+		const storedLine = lineStr ? parseInt(lineStr, 10) : 0;
+		const freshLookup = vscode.workspace.getConfiguration('tldraw-viz')
+			.get<boolean>('freshLineLookup', true);
+
+		let line = storedLine;
+		if (freshLookup && name && storedLine > 0) {
+			line = await findCurrentLine(workspaceRoot, file, name, storedLine);
+		}
+
+		const zeroBasedLine = Math.max(0, line - 1);
+		const fileUri = vscode.Uri.joinPath(workspaceRoot, file);
+
+		try {
+			const doc = await vscode.workspace.openTextDocument(fileUri);
+			const editor = await vscode.window.showTextDocument(doc, {
+				viewColumn: vscode.ViewColumn.One,
+				selection: new vscode.Range(zeroBasedLine, 0, zeroBasedLine, 0),
+			});
+			editor.revealRange(
+				new vscode.Range(zeroBasedLine, 0, zeroBasedLine, 0),
+				vscode.TextEditorRevealType.InCenter,
+			);
+		} catch {
+			vscode.window.showWarningMessage(
+				`Could not open file: ${file}` + (name ? ` (function: ${name})` : ''),
+			);
+		}
+	}
+}
+
+/** Quick Pick command to navigate to a function in the currently open diagram */
+async function navigateToFunction(): Promise<void> {
+	const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri;
+	if (!workspaceRoot) {
+		vscode.window.showWarningMessage('No workspace folder open.');
+		return;
+	}
+
+	// Find the currently visible .tldr tab
+	let tldrUri: vscode.Uri | undefined;
+	for (const group of vscode.window.tabGroups.all) {
+		for (const tab of group.tabs) {
+			const input = tab.input;
+			if (input && typeof input === 'object' && 'uri' in input) {
+				const uri = (input as { uri: vscode.Uri }).uri;
+				if (uri.fsPath.endsWith('.tldr')) {
+					tldrUri = uri;
+					break;
+				}
+			}
+		}
+		if (tldrUri) break;
+	}
+
+	if (!tldrUri) {
+		vscode.window.showWarningMessage('No .tldr diagram is currently open. Open a diagram first.');
+		return;
+	}
+
+	let data: { records?: Array<Record<string, unknown>> };
+	try {
+		const raw = await vscode.workspace.fs.readFile(tldrUri);
+		data = JSON.parse(Buffer.from(raw).toString('utf-8'));
+	} catch {
+		vscode.window.showWarningMessage('Could not read the diagram file.');
+		return;
+	}
+
+	const docRecord = data.records?.find(
+		(r) => r.id === 'document:document',
+	) as { meta?: { tldrawViz?: { sourceFile?: string; type?: string } } } | undefined;
+	const documentSourceFile = docRecord?.meta?.tldrawViz?.sourceFile || '';
+
+	// Extract all navigable shapes
+	interface NavigableShape {
+		name: string;
+		line: number;
+		file: string;
+		displayText: string;
+	}
+
+	const navigableShapes: NavigableShape[] = [];
+	for (const r of data.records || []) {
+		if (r.typeName !== 'shape' || r.type !== 'geo') continue;
+		const meta = r.meta as { sourceLine?: number; sourceName?: string; sourceFile?: string } | undefined;
+		if (!meta) continue;
+
+		const sourceFile = meta.sourceFile || documentSourceFile;
+		const line = meta.sourceLine || 0;
+		const name = meta.sourceName || '';
+		if (!sourceFile || line === 0) continue;
+
+		const props = r.props as { text?: string } | undefined;
+		navigableShapes.push({
+			name,
+			line,
+			file: sourceFile,
+			displayText: props?.text || name,
+		});
+	}
+
+	if (navigableShapes.length === 0) {
+		vscode.window.showInformationMessage('No navigable functions found in this diagram.');
+		return;
+	}
+
+	const items = navigableShapes.map(s => ({
+		label: s.displayText,
+		description: `${s.file}:${s.line}`,
+		shape: s,
+	}));
+
+	const picked = await vscode.window.showQuickPick(items, {
+		placeHolder: 'Navigate to function in source...',
+		matchOnDescription: true,
+	});
+
+	if (!picked) return;
+
+	const freshLookup = vscode.workspace.getConfiguration('tldraw-viz')
+		.get<boolean>('freshLineLookup', true);
+
+	let line = picked.shape.line;
+	if (freshLookup && picked.shape.name) {
+		line = await findCurrentLine(workspaceRoot, picked.shape.file, picked.shape.name, line);
+	}
+
+	const zeroBasedLine = Math.max(0, line - 1);
+	const fileUri = vscode.Uri.joinPath(workspaceRoot, picked.shape.file);
+
+	try {
+		const doc = await vscode.workspace.openTextDocument(fileUri);
+		const editor = await vscode.window.showTextDocument(doc, {
+			viewColumn: vscode.ViewColumn.One,
+			selection: new vscode.Range(zeroBasedLine, 0, zeroBasedLine, 0),
+		});
+		editor.revealRange(
+			new vscode.Range(zeroBasedLine, 0, zeroBasedLine, 0),
+			vscode.TextEditorRevealType.InCenter,
+		);
+	} catch {
+		vscode.window.showWarningMessage(`Could not open: ${picked.shape.file}`);
+	}
+}
+
 export async function activate(context: vscode.ExtensionContext) {
 	// Restore API key from secure storage
 	const apiKey = await context.secrets.get('tldraw-viz.anthropicApiKey');
@@ -1004,6 +1227,12 @@ export async function activate(context: vscode.ExtensionContext) {
 		vscode.commands.registerCommand('tldraw-viz.clearApiKey', () => clearApiKey(context)),
 		vscode.commands.registerCommand('tldraw-viz.generateProjectArchitecture', () => generateProjectArchitecture(context)),
 		vscode.commands.registerCommand('tldraw-viz.generateFlowWithClaude', () => generateFlowWithClaude(context)),
+		vscode.commands.registerCommand('tldraw-viz.navigateToFunction', navigateToFunction),
+	);
+
+	// Register URI handler for shape click-to-navigate
+	context.subscriptions.push(
+		vscode.window.registerUriHandler(new NavigationUriHandler()),
 	);
 
 	setupFileWatcher(context);
