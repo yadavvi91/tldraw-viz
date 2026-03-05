@@ -4,10 +4,27 @@ import { initParser, parseSource, extractNodes } from './CodeAnalyzer';
 import { extractEdges } from './CallGraphExtractor';
 import { layoutCallGraph } from './DiagramGenerator';
 import { generateTldr, serializeTldr } from './TldrWriter';
+import { DEFAULT_CONFIG, parseConfig, shouldSkipFile, hasEnoughSubstance, type TldrawConfig } from './GranularityFilter';
 import { getLanguageConfig } from './languages';
 import type { CallGraph } from './types';
 
 let shadowDir: ShadowDirectory | undefined;
+
+async function loadTldrawConfig(workspaceRoot: vscode.Uri): Promise<TldrawConfig> {
+	const configUri = vscode.Uri.joinPath(workspaceRoot, '.tldraw', 'tldraw.config.json');
+	try {
+		const raw = await vscode.workspace.fs.readFile(configUri);
+		const parsed = JSON.parse(Buffer.from(raw).toString('utf-8'));
+		return parseConfig(parsed);
+	} catch {
+		const vsConfig = vscode.workspace.getConfiguration('tldraw-viz');
+		return {
+			skip: vsConfig.get<string[]>('skipPatterns', DEFAULT_CONFIG.skip),
+			minFunctions: vsConfig.get<number>('minFunctions', DEFAULT_CONFIG.minFunctions),
+			flows: DEFAULT_CONFIG.flows,
+		};
+	}
+}
 
 function getShadowDir(): ShadowDirectory {
 	if (!shadowDir) {
@@ -128,6 +145,7 @@ async function generateAll() {
 	}
 
 	const sd = getShadowDir();
+	const config = await loadTldrawConfig(workspaceRoot);
 	const supportedExtensions = [
 		'**/*.ts', '**/*.tsx', '**/*.js', '**/*.jsx',
 		'**/*.py', '**/*.go', '**/*.rs', '**/*.java',
@@ -154,9 +172,16 @@ async function generateAll() {
 				for (const fileUri of files) {
 					if (token.isCancellationRequested) break;
 
+					const fileName = vscode.workspace.asRelativePath(fileUri);
+
+					// Check skip patterns
+					if (shouldSkipFile(fileName, config)) {
+						skipped++;
+						continue;
+					}
+
 					const doc = await vscode.workspace.openTextDocument(fileUri);
 					const content = doc.getText();
-					const fileName = vscode.workspace.asRelativePath(fileUri);
 
 					// Check cache
 					if (await sd.isFresh(fileUri, content)) {
@@ -166,7 +191,7 @@ async function generateAll() {
 
 					const graph = await extractCallGraph(fileName, content, doc.languageId);
 
-					if (!graph || graph.nodes.length < 3) {
+					if (!graph || !hasEnoughSubstance(graph.nodes.length, graph.edges.length, config)) {
 						skipped++;
 						continue;
 					}

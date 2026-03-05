@@ -86,6 +86,7 @@
   },
   "dependencies": {
     "@dagrejs/dagre": "^1.1.4",
+    "minimatch": "^10.2.4",
     "tree-sitter-wasms": "^0.1.13",
     "web-tree-sitter": "^0.24.4"
   }
