@@ -73,9 +73,14 @@ export function mermaidToCallGraph(graph: MermaidGraph, fileName: string, nodeMa
 	// Convert nodes
 	for (const mNode of graph.nodes) {
 		const mapping = nodeMapping?.[mNode.id];
+		// Extract just the function name from mermaid labels like
+		// "extractReactDetails —\ncheck if node is React component,\nextract hooks & JSX info"
+		// We want just "extractReactDetails" for source navigation.
+		const rawName = mapping?.name || mNode.label || mNode.id;
+		const funcName = rawName.split(/\s*[—–\-]\s*|\n/)[0].trim();
 		nodes.push({
 			id: mNode.id,
-			name: mapping?.name || mNode.label || mNode.id,
+			name: funcName || rawName,
 			type: 'function',
 			line: mapping?.line || 0,
 			role: ROLE_MAP[mNode.shape],

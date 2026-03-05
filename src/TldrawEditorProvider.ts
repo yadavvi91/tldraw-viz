@@ -169,6 +169,7 @@ export class TldrawEditorProvider implements vscode.CustomReadonlyEditorProvider
 	<div id="root">Initializing tldraw viewer...</div>
 	<script>
 		window.onerror = function(msg, src, line, col, err) {
+			if (typeof msg === 'string' && msg.indexOf('ResizeObserver') !== -1) return true;
 			var d = document.getElementById('debug');
 			d.style.display = 'block';
 			d.textContent = 'JS Error: ' + msg + '\\nSource: ' + src + ':' + line + ':' + col + '\\n' + (err && err.stack || '');
