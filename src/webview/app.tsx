@@ -61,9 +61,12 @@ function TldrawEditor({ fileContents }: { fileContents: string }) {
 	// Listen for refresh messages from the extension (sent when panel becomes visible)
 	useEffect(() => {
 		function handleMessage(event: MessageEvent<ExtensionToWebview>) {
-			if (event.data.type === 'refresh' && editorRef.current) {
-				console.log('[tldraw-viz] Refreshing viewport');
-				editorRef.current.updateViewportScreenBounds();
+			if (event.data.type === 'refresh') {
+				console.log('[tldraw-viz] Refreshing viewport via resize');
+				// Trigger a resize event so tldraw's ResizeObserver re-measures the container
+				requestAnimationFrame(() => {
+					window.dispatchEvent(new Event('resize'));
+				});
 			}
 		}
 		window.addEventListener('message', handleMessage);
