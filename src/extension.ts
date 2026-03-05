@@ -1,6 +1,10 @@
 import * as vscode from 'vscode';
 import { ShadowDirectory } from './ShadowDirectory';
+import { initParser, parseSource, extractNodes } from './CodeAnalyzer';
+import { extractEdges } from './CallGraphExtractor';
+import { layoutCallGraph } from './DiagramGenerator';
 import { generateTldr, serializeTldr } from './TldrWriter';
+import { getLanguageConfig } from './languages';
 import type { CallGraph } from './types';
 
 let shadowDir: ShadowDirectory | undefined;
@@ -17,56 +21,20 @@ function getShadowDir(): ShadowDirectory {
 }
 
 /**
- * Placeholder: extract call graph from source code.
- * Will be replaced by Tree-sitter + CallGraphExtractor in Phase 2.
+ * Extract call graph from source code using Tree-sitter.
  */
-function extractCallGraph(
+async function extractCallGraph(
 	fileName: string,
 	content: string,
 	languageId: string,
-): CallGraph {
-	// For now, generate a demo graph to prove the pipeline works
-	const lines = content.split('\n');
-	const functionPattern = /(?:function\s+(\w+)|(?:const|let|var)\s+(\w+)\s*=\s*(?:async\s*)?\(|(\w+)\s*\([^)]*\)\s*\{)/;
+): Promise<CallGraph | undefined> {
+	const config = getLanguageConfig(languageId);
+	if (!config) return undefined;
 
-	const nodes: CallGraph['nodes'] = [];
-	for (let i = 0; i < lines.length; i++) {
-		const match = lines[i].match(functionPattern);
-		if (match) {
-			const name = match[1] || match[2] || match[3];
-			if (name && !['if', 'for', 'while', 'switch', 'catch'].includes(name)) {
-				nodes.push({
-					id: `func-${name}`,
-					name,
-					type: 'function',
-					line: i + 1,
-				});
-			}
-		}
-	}
-
-	// Simple heuristic edges: look for function calls within the file
-	const edges: CallGraph['edges'] = [];
-	const nodeNames = new Set(nodes.map(n => n.name));
-	for (const caller of nodes) {
-		// Find the caller's body (rough: from its line to the next function)
-		const callerIdx = nodes.indexOf(caller);
-		const startLine = caller.line;
-		const endLine = callerIdx < nodes.length - 1
-			? nodes[callerIdx + 1].line - 1
-			: lines.length;
-
-		for (let i = startLine; i < endLine; i++) {
-			for (const target of nodeNames) {
-				if (target !== caller.name && lines[i]?.includes(`${target}(`)) {
-					const edgeId = `${caller.id}->${target}`;
-					if (!edges.find(e => e.from === caller.id && e.to === `func-${target}`)) {
-						edges.push({ from: caller.id, to: `func-${target}` });
-					}
-				}
-			}
-		}
-	}
+	await initParser();
+	const tree = await parseSource(content, config);
+	const nodes = extractNodes(tree, config);
+	const edges = extractEdges(tree, config, nodes);
 
 	return { nodes, edges, fileName, language: languageId };
 }
@@ -96,7 +64,14 @@ async function showDiagram() {
 	}
 
 	// Extract call graph
-	const graph = extractCallGraph(fileName, content, document.languageId);
+	const graph = await extractCallGraph(fileName, content, document.languageId);
+
+	if (!graph) {
+		vscode.window.showWarningMessage(
+			`Language "${document.languageId}" is not supported for diagram generation.`,
+		);
+		return;
+	}
 
 	if (graph.nodes.length === 0) {
 		vscode.window.showInformationMessage(
@@ -105,12 +80,15 @@ async function showDiagram() {
 		return;
 	}
 
+	// Layout with dagre
+	const positioned = layoutCallGraph(graph);
+
 	// Generate .tldr
 	const tldr = generateTldr(graph, {
 		sourceFile: fileName,
 		sourceHash: sd.computeHash(content),
 		type: 'file',
-	});
+	}, positioned);
 	const tldrContent = serializeTldr(tldr);
 
 	// Write to shadow directory
@@ -186,18 +164,19 @@ async function generateAll() {
 						continue;
 					}
 
-					const graph = extractCallGraph(fileName, content, doc.languageId);
+					const graph = await extractCallGraph(fileName, content, doc.languageId);
 
-					if (graph.nodes.length < 3) {
+					if (!graph || graph.nodes.length < 3) {
 						skipped++;
 						continue;
 					}
 
+					const positioned = layoutCallGraph(graph);
 					const tldr = generateTldr(graph, {
 						sourceFile: fileName,
 						sourceHash: sd.computeHash(content),
 						type: 'file',
-					});
+					}, positioned);
 					await sd.writeTldr(sd.getTldrUri(fileUri), serializeTldr(tldr));
 					generated++;
 

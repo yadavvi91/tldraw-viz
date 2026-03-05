@@ -11,7 +11,7 @@ const buildOptions = {
 	platform: 'node',
 	format: 'cjs',
 	target: 'node18',
-	external: ['vscode'],
+	external: ['vscode', 'web-tree-sitter', 'tree-sitter-wasms'],
 	sourcemap: !isProd,
 	minify: isProd,
 	treeShaking: true,

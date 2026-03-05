@@ -147,10 +147,14 @@ function makeBinding(
 /**
  * Generate a complete .tldr file from a call graph.
  * Produces valid JSON compatible with the official tldraw VS Code extension.
+ *
+ * If `positionedNodes` is provided (from dagre layout), uses those positions.
+ * Otherwise falls back to a simple grid layout.
  */
 export function generateTldr(
 	graph: CallGraph,
 	meta?: Partial<TldrawVizMeta>,
+	positionedNodes?: PositionedNode[],
 ): TldrFile {
 	const pageId = 'page:page';
 	const records: TldrRecord[] = [];
@@ -180,8 +184,8 @@ export function generateTldr(
 		meta: {},
 	});
 
-	// Layout nodes
-	const positioned = layoutNodes(graph);
+	// Use provided positions or fall back to grid layout
+	const positioned = positionedNodes || layoutNodes(graph);
 
 	// Create geo shapes for each node
 	let shapeIndex = 0;
