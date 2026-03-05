@@ -1,3 +1,33 @@
+/** Semantic role for a node in the diagram */
+export type NodeRole =
+	| 'user-action'
+	| 'process'
+	| 'callback'
+	| 'decision'
+	| 'display'
+	| 'parent'
+	| 'hidden'
+	| 'entrypoint';
+
+/** Visual shape for a node in tldraw */
+export type NodeShape =
+	| 'rectangle'
+	| 'diamond'
+	| 'ellipse'
+	| 'cloud'
+	| 'hexagon'
+	| 'oval';
+
+/** Edge line style */
+export type EdgeStyle = 'solid' | 'dashed' | 'dotted';
+
+/** A named group of nodes (rendered as a tldraw frame) */
+export interface NodeGroup {
+	id: string;
+	label: string;
+	nodeIds: string[];
+}
+
 /** A node in the call graph (function, method, class) */
 export interface CodeNode {
 	id: string;
@@ -6,6 +36,14 @@ export interface CodeNode {
 	line: number;
 	/** Parent class name if this is a method */
 	parent?: string;
+	/** Semantic role assigned by SemanticAnalyzer */
+	role?: NodeRole;
+	/** Visual shape override */
+	shape?: NodeShape;
+	/** tldraw color name override */
+	color?: string;
+	/** Group this node belongs to */
+	groupId?: string;
 }
 
 /** A directed edge in the call graph */
@@ -13,6 +51,8 @@ export interface CodeEdge {
 	from: string;
 	to: string;
 	label?: string;
+	/** Edge line style (solid, dashed, dotted) */
+	style?: EdgeStyle;
 }
 
 /** Extracted call graph from a source file */
@@ -21,6 +61,8 @@ export interface CallGraph {
 	edges: CodeEdge[];
 	fileName: string;
 	language: string;
+	/** Semantic groups for subgraph rendering */
+	groups?: NodeGroup[];
 }
 
 /** A positioned node after dagre layout */
@@ -29,6 +71,20 @@ export interface PositionedNode extends CodeNode {
 	y: number;
 	width: number;
 	height: number;
+}
+
+/** A positioned group with bounding box after layout */
+export interface PositionedGroup extends NodeGroup {
+	x: number;
+	y: number;
+	width: number;
+	height: number;
+}
+
+/** Layout result containing both positioned nodes and groups */
+export interface LayoutResult {
+	nodes: PositionedNode[];
+	groups: PositionedGroup[];
 }
 
 /** tldraw shape record */

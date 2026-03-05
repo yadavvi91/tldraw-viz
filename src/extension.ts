@@ -7,8 +7,10 @@ import { layoutCallGraph } from './DiagramGenerator';
 import { generateTldr, serializeTldr } from './TldrWriter';
 import { DEFAULT_CONFIG, parseConfig, shouldSkipFile, hasEnoughSubstance, type TldrawConfig } from './GranularityFilter';
 import { traceFlow, type FileReader } from './FlowTracer';
+import { analyze } from './SemanticAnalyzer';
 import { getLanguageConfig } from './languages';
 import type { CallGraph } from './types';
+import type Parser from 'web-tree-sitter';
 
 let shadowDir: ShadowDirectory | undefined;
 
@@ -41,12 +43,13 @@ function getShadowDir(): ShadowDirectory {
 
 /**
  * Extract call graph from source code using Tree-sitter.
+ * Returns both the call graph and the parsed AST tree (for semantic analysis).
  */
 async function extractCallGraph(
 	fileName: string,
 	content: string,
 	languageId: string,
-): Promise<CallGraph | undefined> {
+): Promise<{ graph: CallGraph; tree: Parser.Tree } | undefined> {
 	const config = getLanguageConfig(languageId);
 	if (!config) return undefined;
 
@@ -55,7 +58,12 @@ async function extractCallGraph(
 	const nodes = extractNodes(tree, config);
 	const edges = extractEdges(tree, config, nodes);
 
-	return { nodes, edges, fileName, language: languageId };
+	const graph: CallGraph = { nodes, edges, fileName, language: languageId };
+
+	// Run semantic analysis to enrich nodes with roles, shapes, colors, groups
+	analyze(graph, tree, config);
+
+	return { graph, tree };
 }
 
 async function showDiagram() {
@@ -82,15 +90,17 @@ async function showDiagram() {
 		return;
 	}
 
-	// Extract call graph
-	const graph = await extractCallGraph(fileName, content, document.languageId);
+	// Extract call graph with semantic analysis
+	const result = await extractCallGraph(fileName, content, document.languageId);
 
-	if (!graph) {
+	if (!result) {
 		vscode.window.showWarningMessage(
 			`Language "${document.languageId}" is not supported for diagram generation.`,
 		);
 		return;
 	}
+
+	const { graph } = result;
 
 	if (graph.nodes.length === 0) {
 		vscode.window.showInformationMessage(
@@ -191,15 +201,15 @@ async function generateAll() {
 						continue;
 					}
 
-					const graph = await extractCallGraph(fileName, content, doc.languageId);
+					const result = await extractCallGraph(fileName, content, doc.languageId);
 
-					if (!graph || !hasEnoughSubstance(graph.nodes.length, graph.edges.length, config)) {
+					if (!result || !hasEnoughSubstance(result.graph.nodes.length, result.graph.edges.length, config)) {
 						skipped++;
 						continue;
 					}
 
-					const positioned = layoutCallGraph(graph);
-					const tldr = generateTldr(graph, {
+					const positioned = layoutCallGraph(result.graph);
+					const tldr = generateTldr(result.graph, {
 						sourceFile: fileName,
 						sourceHash: sd.computeHash(content),
 						type: 'file',
@@ -377,11 +387,11 @@ function setupFileWatcher(context: vscode.ExtensionContext): void {
 
 				if (await sd.isFresh(uri, content)) return;
 
-				const graph = await extractCallGraph(fileName, content, doc.languageId);
-				if (!graph || graph.nodes.length === 0) return;
+				const result = await extractCallGraph(fileName, content, doc.languageId);
+				if (!result || result.graph.nodes.length === 0) return;
 
-				const positioned = layoutCallGraph(graph);
-				const tldr = generateTldr(graph, {
+				const positioned = layoutCallGraph(result.graph);
+				const tldr = generateTldr(result.graph, {
 					sourceFile: fileName,
 					sourceHash: sd.computeHash(content),
 					type: 'file',

@@ -23,25 +23,26 @@ describe('DiagramGenerator (dagre layout)', () => {
 	};
 
 	it('produces positioned nodes for all input nodes', () => {
-		const positioned = layoutCallGraph(sampleGraph);
-		expect(positioned).toHaveLength(5);
-		expect(positioned.every(n => typeof n.x === 'number' && typeof n.y === 'number')).toBe(true);
+		const result = layoutCallGraph(sampleGraph);
+		expect(result.nodes).toHaveLength(5);
+		expect(result.nodes.every(n => typeof n.x === 'number' && typeof n.y === 'number')).toBe(true);
 	});
 
 	it('places root node above its children', () => {
-		const positioned = layoutCallGraph(sampleGraph);
-		const root = positioned.find(n => n.id === 'function-handleLogin')!;
-		const child = positioned.find(n => n.id === 'function-validateCredentials')!;
+		const result = layoutCallGraph(sampleGraph);
+		const root = result.nodes.find(n => n.id === 'function-handleLogin')!;
+		const child = result.nodes.find(n => n.id === 'function-validateCredentials')!;
 
 		expect(root.y).toBeLessThan(child.y);
 	});
 
-	it('places all nodes at consistent width/height', () => {
-		const positioned = layoutCallGraph(sampleGraph);
-		const firstWidth = positioned[0].width;
-		const firstHeight = positioned[0].height;
+	it('places all nodes at consistent width/height for uniform shapes', () => {
+		const result = layoutCallGraph(sampleGraph);
+		const firstWidth = result.nodes[0].width;
+		const firstHeight = result.nodes[0].height;
 
-		expect(positioned.every(n => n.width === firstWidth && n.height === firstHeight)).toBe(true);
+		// All nodes have same shape (no roles set), so all should be same size
+		expect(result.nodes.every(n => n.width === firstWidth && n.height === firstHeight)).toBe(true);
 	});
 
 	it('handles empty graph', () => {
@@ -51,8 +52,9 @@ describe('DiagramGenerator (dagre layout)', () => {
 			nodes: [],
 			edges: [],
 		};
-		const positioned = layoutCallGraph(emptyGraph);
-		expect(positioned).toHaveLength(0);
+		const result = layoutCallGraph(emptyGraph);
+		expect(result.nodes).toHaveLength(0);
+		expect(result.groups).toHaveLength(0);
 	});
 
 	it('handles disconnected nodes', () => {
@@ -65,16 +67,15 @@ describe('DiagramGenerator (dagre layout)', () => {
 			],
 			edges: [],
 		};
-		const positioned = layoutCallGraph(graph);
-		expect(positioned).toHaveLength(2);
-		// Both should have valid positions
-		expect(positioned[0].x).toBeDefined();
-		expect(positioned[1].x).toBeDefined();
+		const result = layoutCallGraph(graph);
+		expect(result.nodes).toHaveLength(2);
+		expect(result.nodes[0].x).toBeDefined();
+		expect(result.nodes[1].x).toBeDefined();
 	});
 
-	it('integrates with TldrWriter via positioned nodes', () => {
-		const positioned = layoutCallGraph(sampleGraph);
-		const tldr = generateTldr(sampleGraph, undefined, positioned);
+	it('integrates with TldrWriter via LayoutResult', () => {
+		const result = layoutCallGraph(sampleGraph);
+		const tldr = generateTldr(sampleGraph, undefined, result);
 
 		const shapes = tldr.records.filter(
 			(r: any) => r.typeName === 'shape' && r.type === 'geo',
@@ -85,5 +86,70 @@ describe('DiagramGenerator (dagre layout)', () => {
 		const root = shapes.find((s: any) => s.id === 'shape:function-handleLogin');
 		const child = shapes.find((s: any) => s.id === 'shape:function-validateCredentials');
 		expect(root.y).toBeLessThan(child.y);
+	});
+
+	describe('compound layout (groups)', () => {
+		it('positions groups when groups are present', () => {
+			const graph: CallGraph = {
+				fileName: 'test.tsx',
+				language: 'typescriptreact',
+				nodes: [
+					{ id: 'func-a', name: 'handleClick', type: 'function', line: 1, role: 'user-action', shape: 'oval', groupId: 'group-ui' },
+					{ id: 'func-b', name: 'handleChange', type: 'function', line: 5, role: 'user-action', shape: 'oval', groupId: 'group-ui' },
+					{ id: 'func-c', name: 'processData', type: 'function', line: 10, role: 'process', shape: 'rectangle', groupId: 'group-logic' },
+				],
+				edges: [
+					{ from: 'func-a', to: 'func-c' },
+					{ from: 'func-b', to: 'func-c' },
+				],
+				groups: [
+					{ id: 'group-ui', label: 'User Interactions', nodeIds: ['func-a', 'func-b'] },
+					{ id: 'group-logic', label: 'Logic', nodeIds: ['func-c'] },
+				],
+			};
+
+			const result = layoutCallGraph(graph);
+			expect(result.nodes).toHaveLength(3);
+			expect(result.groups).toHaveLength(2);
+
+			// Groups should have valid positions and dimensions
+			for (const group of result.groups) {
+				expect(group.x).toBeDefined();
+				expect(group.y).toBeDefined();
+				expect(group.width).toBeGreaterThan(0);
+				expect(group.height).toBeGreaterThan(0);
+			}
+		});
+
+		it('uses shape-specific dimensions for different node shapes', () => {
+			const graph: CallGraph = {
+				fileName: 'test.tsx',
+				language: 'typescriptreact',
+				nodes: [
+					{ id: 'func-a', name: 'check', type: 'function', line: 1, shape: 'diamond' },
+					{ id: 'func-b', name: 'process', type: 'function', line: 5, shape: 'rectangle' },
+					{ id: 'func-c', name: 'handle', type: 'function', line: 10, shape: 'oval' },
+				],
+				edges: [],
+			};
+
+			const result = layoutCallGraph(graph);
+			const diamond = result.nodes.find(n => n.id === 'func-a')!;
+			const rect = result.nodes.find(n => n.id === 'func-b')!;
+			const oval = result.nodes.find(n => n.id === 'func-c')!;
+
+			// Diamond should be wider and taller
+			expect(diamond.width).toBe(300);
+			expect(diamond.height).toBe(80);
+			expect(rect.width).toBe(280);
+			expect(rect.height).toBe(60);
+			expect(oval.width).toBe(240);
+			expect(oval.height).toBe(50);
+		});
+
+		it('returns empty groups array when no groups defined', () => {
+			const result = layoutCallGraph(sampleGraph);
+			expect(result.groups).toHaveLength(0);
+		});
 	});
 });
