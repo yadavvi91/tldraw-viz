@@ -139,6 +139,83 @@ describe('TldrWriter', () => {
 		expect(arrows).toHaveLength(0);
 	});
 
+	describe('.tldr format compatibility', () => {
+		it('includes gridSize on document record', () => {
+			const tldr = generateTldr(sampleGraph);
+			const doc = tldr.records.find((r) => r.id === 'document:document') as Record<string, any>;
+			expect(doc.gridSize).toBe(10);
+		});
+
+		it('includes scale on geo shape props', () => {
+			const tldr = generateTldr(sampleGraph);
+			const shapes = tldr.records.filter(
+				(r) => r.typeName === 'shape' && r.type === 'geo',
+			);
+			for (const shape of shapes) {
+				expect((shape as Record<string, any>).props.scale).toBe(1);
+			}
+		});
+
+		it('includes scale on arrow shape props', () => {
+			const tldr = generateTldr(sampleGraph);
+			const arrows = tldr.records.filter(
+				(r) => r.typeName === 'shape' && r.type === 'arrow',
+			);
+			for (const arrow of arrows) {
+				expect((arrow as Record<string, any>).props.scale).toBe(1);
+			}
+		});
+
+		it('includes all required schema sequences', () => {
+			const tldr = generateTldr(sampleGraph);
+			const sequences = tldr.schema.sequences;
+
+			// These sequences are required by tldraw's validator
+			expect(sequences).toHaveProperty('com.tldraw.store');
+			expect(sequences).toHaveProperty('com.tldraw.asset');
+			expect(sequences).toHaveProperty('com.tldraw.camera');
+			expect(sequences).toHaveProperty('com.tldraw.document');
+			expect(sequences).toHaveProperty('com.tldraw.instance');
+			expect(sequences).toHaveProperty('com.tldraw.instance_page_state');
+			expect(sequences).toHaveProperty('com.tldraw.page');
+			expect(sequences).toHaveProperty('com.tldraw.pointer');
+			expect(sequences).toHaveProperty('com.tldraw.instance_presence');
+			expect(sequences).toHaveProperty('com.tldraw.shape');
+			expect(sequences).toHaveProperty('com.tldraw.shape.arrow');
+			expect(sequences).toHaveProperty('com.tldraw.shape.geo');
+			expect(sequences).toHaveProperty('com.tldraw.shape.text');
+			expect(sequences).toHaveProperty('com.tldraw.binding');
+			expect(sequences).toHaveProperty('com.tldraw.binding.arrow');
+		});
+
+		it('produces a .tldr that matches the expected tldraw structure', () => {
+			const tldr = generateTldr(sampleGraph);
+			const json = serializeTldr(tldr);
+			const parsed = JSON.parse(json);
+
+			// Top-level structure
+			expect(parsed.tldrawFileFormatVersion).toBe(1);
+			expect(parsed.schema.schemaVersion).toBe(2);
+			expect(Object.keys(parsed.schema.sequences).length).toBeGreaterThanOrEqual(15);
+
+			// Document record must have gridSize
+			const doc = parsed.records.find((r: any) => r.typeName === 'document');
+			expect(doc.gridSize).toBe(10);
+
+			// All geo shapes must have scale
+			const geos = parsed.records.filter((r: any) => r.typeName === 'shape' && r.type === 'geo');
+			for (const geo of geos) {
+				expect(geo.props.scale).toBe(1);
+			}
+
+			// All arrow shapes must have scale
+			const arrows = parsed.records.filter((r: any) => r.typeName === 'shape' && r.type === 'arrow');
+			for (const arrow of arrows) {
+				expect(arrow.props.scale).toBe(1);
+			}
+		});
+	});
+
 	it('formats method names with parent class', () => {
 		const graph: CallGraph = {
 			fileName: 'test.ts',
