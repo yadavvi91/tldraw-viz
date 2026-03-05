@@ -2,7 +2,7 @@
   "name": "tldraw-viz",
   "displayName": "tldraw Code Visualizer",
   "description": "Auto-generate tldraw call graph diagrams from source code",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "publisher": "yadavvi91",
   "license": "MIT",
   "repository": {
@@ -44,7 +44,12 @@
       },
       {
         "command": "tldraw-viz.copySummary",
-        "title": "Copy Summary for Claude",
+        "title": "Copy Overview Summary for Claude",
+        "category": "tldraw"
+      },
+      {
+        "command": "tldraw-viz.copyDetailSummary",
+        "title": "Copy Detail Summary for Claude",
         "category": "tldraw"
       }
     ],
@@ -68,6 +73,11 @@
           "type": "number",
           "default": 3,
           "description": "Minimum number of functions required to generate a diagram"
+        },
+        "tldraw-viz.mermaidDir": {
+          "type": "string",
+          "default": ".mermaid",
+          "description": "Name of the shadow directory for mermaid diagram files"
         },
         "tldraw-viz.skipPatterns": {
           "type": "array",

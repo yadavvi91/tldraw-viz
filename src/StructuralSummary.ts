@@ -157,11 +157,48 @@ export function generateSummary(
 	return lines.join('\n').trimEnd();
 }
 
+/** Common mermaid style instructions included in both prompt types */
+function getMermaidStyleInstructions(): string[] {
+	return [
+		'',
+		'## Mermaid formatting requirements',
+		'',
+		'Start the diagram with:',
+		'```',
+		'%%{init: {"flowchart": {"htmlLabels": true, "curve": "basis"}} }%%',
+		'flowchart TD',
+		'```',
+		'',
+		'Include these classDef styles at the end:',
+		'```',
+		'classDef userAction fill:#E3F2FD,stroke:#1565C0,color:#0D47A1',
+		'classDef process fill:#F3E5F5,stroke:#7B1FA2,color:#4A148C',
+		'classDef callback fill:#FFF3E0,stroke:#E65100,color:#BF360C',
+		'classDef decision fill:#EDE7F6,stroke:#4527A0,color:#311B92',
+		'classDef display fill:#E8F5E9,stroke:#2E7D32,color:#1B5E20',
+		'classDef parent fill:#ECEFF1,stroke:#546E7A,color:#37474F',
+		'classDef hidden fill:#FAFAFA,stroke:#BDBDBD,color:#757575',
+		'```',
+		'',
+		'Assign classes to every node using `class nodeId className`.',
+		'',
+		'## Shape conventions',
+		'- Stadium shapes `([text])` for user-facing actions → class `userAction`',
+		'- Diamond shapes `{text}` for decisions/conditionals → class `decision`',
+		'- Rectangle shapes `[text]` for processing steps → class `process`',
+		'- Hexagon shapes `{{text}}` for callbacks/event handlers → class `callback`',
+		'- Use subgraphs for logical groupings',
+		'- Use labeled edges `-->|label|` for data flow descriptions',
+		'- Use dotted edges `-.->` for async/callback flows',
+		'- Use thick edges `==>` for primary/critical paths',
+	];
+}
+
 /**
- * Generate a full Claude prompt that wraps the structural summary with
- * instructions for producing a mermaid flowchart.
+ * Generate a Claude prompt for a HIGH-LEVEL BEHAVIORAL overview.
+ * Focuses on what the code does from a user/data perspective (5-10 nodes).
  */
-export function generateClaudePrompt(
+export function generateOverviewPrompt(
 	graph: CallGraph,
 	sourceContent: string,
 	config: LanguageConfig,
@@ -170,16 +207,75 @@ export function generateClaudePrompt(
 
 	const lines: string[] = [];
 
-	lines.push('Generate a mermaid flowchart for this file:');
+	lines.push('Generate a HIGH-LEVEL BEHAVIORAL mermaid flowchart for this file.');
+	lines.push('');
+	lines.push('## Goal');
+	lines.push('Describe what this code DOES from a user/data perspective, NOT how it is implemented.');
+	lines.push('Use 5-10 nodes maximum — one per major behavior, not per function.');
+	lines.push('Labels should be human-readable actions (e.g. "User picks a date", "Calculate sun position"), not function names.');
+	lines.push('Group by user-visible concerns (e.g. "User Interactions", "Data Processing", "Display").');
+	lines.push('');
+	lines.push('## Source analysis');
 	lines.push('');
 	lines.push(summary);
+
+	lines.push(...getMermaidStyleInstructions());
+
 	lines.push('');
-	lines.push('Please use:');
-	lines.push('- Stadium shapes ([text]) for user-facing actions');
-	lines.push('- Diamond shapes {text} for decisions/conditionals');
-	lines.push('- Rectangle shapes [text] for processing steps');
-	lines.push('- Subgraphs for logical groupings');
-	lines.push('- Labeled edges for data flow descriptions');
+	lines.push('## Important');
+	lines.push('- Return ONLY the mermaid code block, no explanation');
+	lines.push('- Keep it high-level: merge implementation details into behavioral steps');
+	lines.push('- Every node must have a class assignment');
 
 	return lines.join('\n');
+}
+
+/**
+ * Generate a Claude prompt for a DETAILED function-level flow.
+ * Shows every function call chain and data transformation.
+ */
+export function generateDetailPrompt(
+	graph: CallGraph,
+	sourceContent: string,
+	config: LanguageConfig,
+): string {
+	const summary = generateSummary(graph, sourceContent, config);
+
+	const lines: string[] = [];
+
+	lines.push('Generate a DETAILED function-level mermaid flowchart for this file.');
+	lines.push('');
+	lines.push('## Goal');
+	lines.push('Show every function call chain and data transformation in detail.');
+	lines.push('Include all intermediate steps, conditionals, and edge cases.');
+	lines.push('Each function or significant expression gets its own node.');
+	lines.push('Labels should include function names with brief descriptions (e.g. "parseDate — extract Date from picker").');
+	lines.push('Group functions by their parent class/module or logical area.');
+	lines.push('');
+	lines.push('## Source analysis');
+	lines.push('');
+	lines.push(summary);
+
+	lines.push(...getMermaidStyleInstructions());
+
+	lines.push('');
+	lines.push('## Important');
+	lines.push('- Return ONLY the mermaid code block, no explanation');
+	lines.push('- Be thorough: every function, every branch, every callback');
+	lines.push('- Every node must have a class assignment');
+
+	return lines.join('\n');
+}
+
+/**
+ * Generate a full Claude prompt that wraps the structural summary with
+ * instructions for producing a mermaid flowchart.
+ * @deprecated Use generateOverviewPrompt() or generateDetailPrompt() instead.
+ */
+export function generateClaudePrompt(
+	graph: CallGraph,
+	sourceContent: string,
+	config: LanguageConfig,
+): string {
+	return generateOverviewPrompt(graph, sourceContent, config);
 }

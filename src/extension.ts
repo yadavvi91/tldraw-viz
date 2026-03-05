@@ -11,7 +11,7 @@ import { analyze } from './SemanticAnalyzer';
 import { getLanguageConfig } from './languages';
 import { parseMermaid } from './MermaidParser';
 import { mermaidToCallGraph } from './MermaidConverter';
-import { generateClaudePrompt } from './StructuralSummary';
+import { generateOverviewPrompt, generateDetailPrompt } from './StructuralSummary';
 import type { CallGraph } from './types';
 import type Parser from 'web-tree-sitter';
 
@@ -420,7 +420,13 @@ async function convertMermaid() {
 	);
 }
 
-async function copySummary() {
+/**
+ * Extract call graph from the active editor and generate a prompt.
+ * Shared logic for copySummary and copyDetailSummary.
+ */
+async function extractAndGeneratePrompt(
+	promptType: 'overview' | 'detail',
+): Promise<void> {
 	const editor = vscode.window.activeTextEditor;
 	if (!editor) {
 		vscode.window.showWarningMessage('No active file.');
@@ -446,12 +452,41 @@ async function copySummary() {
 	const graph: CallGraph = { nodes, edges, fileName, language: document.languageId };
 	analyze(graph, tree, config);
 
-	const prompt = generateClaudePrompt(graph, content, config);
+	const sd = getShadowDir();
+
+	// Generate prompt
+	const generateFn = promptType === 'overview' ? generateOverviewPrompt : generateDetailPrompt;
+	const prompt = generateFn(graph, content, config);
 	await vscode.env.clipboard.writeText(prompt);
 
+	// Create .mermaid placeholder files
+	const mmdUri = promptType === 'overview'
+		? sd.getMermaidOverviewUri(document.uri)
+		: sd.getMermaidDetailUri(document.uri);
+
+	try {
+		// Only create if it doesn't exist yet
+		await vscode.workspace.fs.stat(mmdUri);
+	} catch {
+		const placeholder = `%% Paste Claude's mermaid output here\n%% Source: ${fileName}\n%% Type: ${promptType}\n`;
+		await vscode.workspace.fs.writeFile(mmdUri, Buffer.from(placeholder, 'utf-8'));
+	}
+
+	// Open the .mmd file for pasting
+	await vscode.commands.executeCommand('vscode.open', mmdUri);
+
+	const label = promptType === 'overview' ? 'Overview' : 'Detail';
 	vscode.window.showInformationMessage(
-		'Summary copied! Paste into Claude and ask for a mermaid flowchart.',
+		`${label} prompt copied! Paste into Claude, then paste the mermaid output into the opened .mmd file.`,
 	);
+}
+
+async function copySummary() {
+	await extractAndGeneratePrompt('overview');
+}
+
+async function copyDetailSummary() {
+	await extractAndGeneratePrompt('detail');
 }
 
 let debounceTimer: ReturnType<typeof setTimeout> | undefined;
@@ -548,6 +583,7 @@ export function activate(context: vscode.ExtensionContext) {
 		vscode.commands.registerCommand('tldraw-viz.generateFlows', generateFlows),
 		vscode.commands.registerCommand('tldraw-viz.convertMermaid', convertMermaid),
 		vscode.commands.registerCommand('tldraw-viz.copySummary', copySummary),
+		vscode.commands.registerCommand('tldraw-viz.copyDetailSummary', copyDetailSummary),
 	);
 
 	setupFileWatcher(context);

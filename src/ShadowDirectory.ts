@@ -4,11 +4,12 @@ import * as path from 'path';
 
 export class ShadowDirectory {
 	private shadowDirName: string;
+	private mermaidDirName: string;
 
 	constructor(private workspaceRoot: vscode.Uri) {
-		this.shadowDirName = vscode.workspace
-			.getConfiguration('tldraw-viz')
-			.get('shadowDir', '.tldraw');
+		const config = vscode.workspace.getConfiguration('tldraw-viz');
+		this.shadowDirName = config.get('shadowDir', '.tldraw');
+		this.mermaidDirName = config.get('mermaidDir', '.mermaid');
 	}
 
 	/** Map a source file URI to its .tldr path in the shadow directory */
@@ -31,6 +32,37 @@ export class ShadowDirectory {
 			this.shadowDirName,
 			'flows',
 			`${flowName}.tldr`,
+		);
+	}
+
+	/** Get the .mermaid directory name */
+	getMermaidDir(): string {
+		return this.mermaidDirName;
+	}
+
+	/** Map a source file URI to its overview .mmd path in the .mermaid directory */
+	getMermaidOverviewUri(sourceUri: vscode.Uri): vscode.Uri {
+		const relativePath = path.relative(
+			this.workspaceRoot.fsPath,
+			sourceUri.fsPath,
+		);
+		return vscode.Uri.joinPath(
+			this.workspaceRoot,
+			this.mermaidDirName,
+			relativePath + '.overview.mmd',
+		);
+	}
+
+	/** Map a source file URI to its detail .mmd path in the .mermaid directory */
+	getMermaidDetailUri(sourceUri: vscode.Uri): vscode.Uri {
+		const relativePath = path.relative(
+			this.workspaceRoot.fsPath,
+			sourceUri.fsPath,
+		);
+		return vscode.Uri.joinPath(
+			this.workspaceRoot,
+			this.mermaidDirName,
+			relativePath + '.detail.mmd',
 		);
 	}
 
