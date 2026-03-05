@@ -1,0 +1,31 @@
+src/TldrWriter.ts
+  592d168be9bdb037 150-152,157,187-188
+test/DiagramGenerator.test.ts
+  592d168be9bdb037 1-89
+esbuild.mjs
+  592d168be9bdb037 14
+src/extension.ts
+  592d168be9bdb037 3-5,7,24,26,30-32,34-37,67,69-74,83-84,91,167,169,174,179
+src/DiagramGenerator.ts
+  592d168be9bdb037 1-53
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.8",
+  "base_commit_sha": "61dc5de19f27ab4422c57c2e8fac3bcadb38ce0b",
+  "prompts": {
+    "592d168be9bdb037": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ae4054e4-a341-4e25-9182-1a9b82c3d7bb",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Vishal Yadav <yadavvi91@gmail.com>",
+      "messages": [],
+      "total_additions": 180,
+      "total_deletions": 55,
+      "accepted_lines": 179,
+      "overriden_lines": 0
+    }
+  }
+}
