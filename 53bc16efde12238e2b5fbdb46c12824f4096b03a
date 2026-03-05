@@ -1,0 +1,33 @@
+src/StructuralSummary.ts
+  592d168be9bdb037 1,5,420-496
+src/extension.ts
+  592d168be9bdb037 14,18,20,236-245,248,324,326-328,330,337,746-894,1005
+src/ShadowDirectory.ts
+  592d168be9bdb037 38-47
+package.json
+  592d168be9bdb037 5,79-83
+test/StructuralSummary.test.ts
+  592d168be9bdb037 1-80
+src/TldrWriter.ts
+  592d168be9bdb037 244
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.8",
+  "base_commit_sha": "53bc16efde12238e2b5fbdb46c12824f4096b03a",
+  "prompts": {
+    "592d168be9bdb037": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ae4054e4-a341-4e25-9182-1a9b82c3d7bb",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Vishal Yadav <yadavvi91@gmail.com>",
+      "messages": [],
+      "total_additions": 347,
+      "total_deletions": 11,
+      "accepted_lines": 347,
+      "overriden_lines": 0
+    }
+  }
+}
