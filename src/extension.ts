@@ -14,6 +14,7 @@ import { mermaidToCallGraph } from './MermaidConverter';
 import { generateOverviewPrompt, generateDetailPrompt, generateProjectPrompt } from './StructuralSummary';
 import { ClaudeService, estimateCost } from './ClaudeService';
 import { buildProjectGraph } from './ProjectAnalyzer';
+import { scanDocumentation } from './DocumentationScanner';
 import type { CallGraph } from './types';
 import type Parser from 'web-tree-sitter';
 
@@ -665,22 +666,29 @@ async function generateProjectArchitecture(
 			cancellable: false,
 		},
 		async (progress) => {
+			// Scan for project documentation (CLAUDE.md, README.md, plan.md, etc.)
+			progress.report({ message: 'Scanning project documentation...' });
+			const mdUris = await vscode.workspace.findFiles('**/*.md', '**/node_modules/**');
+			const mdFiles = mdUris.map(u => u.fsPath);
+			const docs = await scanDocumentation(fileReader, workspaceRoot.fsPath, mdFiles);
+
 			progress.report({ message: 'Analyzing project structure...' });
 			const projectGraph = await buildProjectGraph(
 				fileReader,
 				workspaceRoot.fsPath,
 				config.modules.length > 0 ? config.modules : undefined,
 				projectName,
+				docs,
 			);
 
-			if (projectGraph.modules.length === 0) {
-				vscode.window.showWarningMessage('No modules found in project.');
+			if (projectGraph.modules.length === 0 && !docs.hasDocumentation) {
+				vscode.window.showWarningMessage('No modules or documentation found in project.');
 				return;
 			}
 
 			progress.report({ message: 'Generating diagram with Claude...' });
 			const prompt = generateProjectPrompt(projectGraph);
-			const result = await claudeService!.generateMermaid(prompt);
+			const result = await claudeService!.generateMermaid(prompt, 8192);
 
 			const sd = getShadowDir();
 			const mmdUri = sd.getProjectMermaidUri();
@@ -714,8 +722,11 @@ async function generateProjectArchitecture(
 
 			updateStatusBar(result.inputTokens, result.outputTokens);
 
+			const docInfo = docs.hasDocumentation
+				? ` (${docs.files.length} doc files scanned)`
+				: ' (no docs found, using structure only)';
 			vscode.window.showInformationMessage(
-				`Project architecture: ${projectGraph.modules.length} modules, ${projectGraph.dependencies.length} dependencies`,
+				`Project architecture: ${projectGraph.modules.length} modules, ${projectGraph.dependencies.length} dependencies${docInfo}`,
 			);
 		},
 	);

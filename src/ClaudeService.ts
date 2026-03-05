@@ -13,10 +13,10 @@ export class ClaudeService {
 		this.client = new Anthropic({ apiKey });
 	}
 
-	async generateMermaid(prompt: string): Promise<GenerationResult> {
+	async generateMermaid(prompt: string, maxTokens: number = 4096): Promise<GenerationResult> {
 		const message = await this.client.messages.create({
 			model: 'claude-sonnet-4-6',
-			max_tokens: 4096,
+			max_tokens: maxTokens,
 			messages: [{ role: 'user', content: prompt }],
 		});
 

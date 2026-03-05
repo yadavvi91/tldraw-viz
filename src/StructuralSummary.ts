@@ -270,9 +270,92 @@ export function generateDetailPrompt(
 
 /**
  * Generate a Claude prompt for a PROJECT-LEVEL architecture diagram.
- * Shows modules as subgraphs with key components, and dependency arrows between modules.
+ * When documentation is available, produces a feature-level prompt.
+ * Otherwise falls back to module-structure prompt.
  */
 export function generateProjectPrompt(projectGraph: ProjectGraph): string {
+	if (projectGraph.documentation?.hasDocumentation) {
+		return generateFeatureLevelPrompt(projectGraph);
+	}
+	return generateModuleStructurePrompt(projectGraph);
+}
+
+/**
+ * Feature-level prompt using project documentation as primary context.
+ * Produces diagrams showing capabilities, data flows, and integrations.
+ */
+function generateFeatureLevelPrompt(projectGraph: ProjectGraph): string {
+	const lines: string[] = [];
+	const docs = projectGraph.documentation!;
+
+	lines.push('Generate a FEATURE-LEVEL ARCHITECTURE mermaid flowchart.');
+	lines.push('');
+	lines.push('## Goal');
+	lines.push('Show what this project DOES — its features, capabilities, data flows, and external integrations.');
+	lines.push('DO NOT show file structure or directory layout.');
+	lines.push('Each subgraph should represent a FEATURE or CAPABILITY (e.g. "Authentication", "Real-time Sync", "Payment Processing"), not a directory.');
+	lines.push('Nodes inside subgraphs should be key behaviors or data flows (e.g. "Validate credentials", "Sync to cloud", "Process webhook").');
+	lines.push('Show how features connect to each other and to external services.');
+	lines.push('');
+
+	lines.push(`## Project: ${projectGraph.projectName}`);
+	lines.push('');
+
+	lines.push('## Project documentation (PRIMARY context)');
+	lines.push('');
+	lines.push('Use the following project documentation to understand what this project does,');
+	lines.push('its architecture rationale, and its feature set:');
+	lines.push('');
+	lines.push(docs.combinedContent);
+	lines.push('');
+
+	// Include structural analysis as secondary context
+	lines.push('## Code structure (SUPPLEMENTARY context)');
+	lines.push('');
+	lines.push(`Modules: ${projectGraph.modules.map(m => `${m.name} (${m.fileCount} files)`).join(', ')}`);
+	lines.push('');
+
+	if (projectGraph.dependencies.length > 0) {
+		lines.push('Key dependency relationships:');
+		const sorted = [...projectGraph.dependencies].sort((a, b) => b.importCount - a.importCount);
+		for (const dep of sorted.slice(0, 15)) {
+			const symbolStr = dep.importedSymbols.length > 0
+				? ` (${dep.importedSymbols.join(', ')})`
+				: '';
+			lines.push(`  ${dep.from} -> ${dep.to}${symbolStr}`);
+		}
+		lines.push('');
+	}
+
+	lines.push(...getMermaidStyleInstructions());
+
+	lines.push('');
+	lines.push('## Additional architecture styles');
+	lines.push('Add these classDef styles:');
+	lines.push('```');
+	lines.push('classDef feature fill:#E8EAF6,stroke:#283593,color:#1A237E');
+	lines.push('classDef external fill:#FFF8E1,stroke:#F57F17,color:#E65100');
+	lines.push('classDef dataStore fill:#E0F2F1,stroke:#00695C,color:#004D40');
+	lines.push('classDef integration fill:#FCE4EC,stroke:#C62828,color:#B71C1C');
+	lines.push('```');
+	lines.push('');
+
+	lines.push('## Important');
+	lines.push('- Return ONLY the mermaid code block, no explanation');
+	lines.push('- Use subgraphs for each FEATURE or CAPABILITY, NOT for directories or modules');
+	lines.push('- Label subgraphs with feature names (e.g. "Authentication & Authorization", "Data Pipeline")');
+	lines.push('- Show external services (databases, APIs, third-party services) as standalone nodes with class `external` or `integration`');
+	lines.push('- Use thick arrows (==>) for primary data flows');
+	lines.push('- Use dotted arrows (-.->)  for async or event-driven connections');
+	lines.push('- Use labeled edges to describe what data flows between features');
+	lines.push('- Aim for 8-15 subgraphs with 2-5 nodes each');
+	lines.push('- Every node must have a class assignment');
+
+	return lines.join('\n');
+}
+
+/** Fallback: module-structure diagram when no docs available */
+function generateModuleStructurePrompt(projectGraph: ProjectGraph): string {
 	const lines: string[] = [];
 
 	lines.push('Generate a PROJECT-LEVEL ARCHITECTURE mermaid flowchart.');

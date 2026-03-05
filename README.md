@@ -12,7 +12,7 @@ Auto-generate interactive call graph diagrams from source code, rendered in [tld
 Install from VSIX:
 
 ```
-code --install-extension tldraw-viz-0.4.1.vsix
+code --install-extension tldraw-viz-0.6.0.vsix
 ```
 
 Or in VS Code: **Extensions** > **...** > **Install from VSIX...**
@@ -48,7 +48,7 @@ All commands are in the Command Palette (`Cmd+Shift+P` / `Ctrl+Shift+P`) under t
 |---|---|
 | **Generate Overview Diagram with Claude** | Send the active file's call graph to Claude, get a high-level behavioral mermaid flowchart back, and open as tldraw. Uses ~$0.01-0.02 per diagram. |
 | **Generate Detail Diagram with Claude** | Same pipeline but generates a detailed function-level flowchart with every call chain and branch. |
-| **Generate Project Architecture with Claude** | Scan the entire workspace, discover modules, analyze cross-module imports, and generate a high-level architecture diagram showing module dependencies. |
+| **Generate Project Architecture with Claude** | Scan project documentation (CLAUDE.md, README.md, plan.md, checkpoint files) and code structure, then generate a feature-level architecture diagram showing capabilities, data flows, and external integrations. Falls back to module-structure diagram if no docs found. |
 | **Set Anthropic API Key** | Store your Anthropic API key securely (encrypted via VS Code secrets). |
 | **Clear Anthropic API Key** | Remove the stored API key. |
 
@@ -90,6 +90,33 @@ Source file
 ```
 
 The Claude pipeline produces richer, more readable diagrams because Claude understands the behavioral intent of the code, not just the syntactic structure.
+
+### Project Architecture Pipeline
+
+```
+Workspace
+    -> Scan for documentation (CLAUDE.md, README.md, plan.md, checkpoint*.md, ...)
+    -> Prioritize and budget-truncate docs (~15K chars)
+    -> Discover modules + analyze cross-module imports
+    -> Feature-level prompt to Claude (docs as PRIMARY context)
+    -> Claude Sonnet 4.6 API call (8K max tokens)
+    -> Mermaid -> .tldr
+    -> Opens in tldraw
+```
+
+The project architecture command automatically finds documentation files that describe your project's features, rationale, and design. It scans for:
+
+| Priority | File | What it provides |
+|---|---|---|
+| 1 | `CLAUDE.md` | AI-friendly project overview |
+| 2 | `README.md` | Architecture, tech stack |
+| 3 | `.claude/MEMORY.md` | Project patterns and conventions |
+| 4 | `plan.md` | Current state, feature dependencies |
+| 5 | `TASKS.md` | Feature checklist |
+| 6 | `.context/plans/checkpoint*.md` | Feature retrospectives |
+| 7 | `.context/plans/*.md` | Implementation plans |
+
+If no documentation is found, it falls back to a module-structure diagram based on directory grouping and import analysis.
 
 ## Configuration
 
@@ -205,6 +232,7 @@ Your Anthropic API key is stored using VS Code's [SecretStorage API](https://cod
 
 ## Version History
 
+- **v0.6.0** — Documentation-driven architecture: scans project docs (CLAUDE.md, README.md, plans, checkpoints) as primary context for feature-level architecture diagrams instead of directory-structure diagrams
 - **v0.5.0** — Project architecture diagrams: auto-detect modules, cross-module import analysis, Claude-powered architecture generation
 - **v0.4.1** — README documentation
 - **v0.4.0** — Claude API integration: one-click diagram generation, API key management, status bar token/cost display

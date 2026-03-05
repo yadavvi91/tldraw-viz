@@ -2,6 +2,7 @@ import path from 'path';
 import { minimatch } from 'minimatch';
 import type { FileReader } from './FlowTracer';
 import type { ModuleConfig } from './GranularityFilter';
+import type { ProjectDocumentation } from './DocumentationScanner';
 
 export interface ProjectModule {
 	name: string;
@@ -22,6 +23,8 @@ export interface ProjectGraph {
 	modules: ProjectModule[];
 	dependencies: ModuleDependency[];
 	projectName: string;
+	/** Documentation context for feature-level architecture */
+	documentation?: ProjectDocumentation;
 }
 
 const IGNORED_DIRS = new Set([
@@ -270,6 +273,7 @@ export async function buildProjectGraph(
 	workspaceRoot: string,
 	configModules?: ModuleConfig[],
 	projectName?: string,
+	documentation?: ProjectDocumentation,
 ): Promise<ProjectGraph> {
 	const allFiles = await fileReader.listFiles();
 	const modules = discoverModules(allFiles, workspaceRoot, configModules);
@@ -294,5 +298,6 @@ export async function buildProjectGraph(
 		modules,
 		dependencies,
 		projectName: projectName || path.basename(workspaceRoot),
+		documentation,
 	};
 }

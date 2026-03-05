@@ -223,7 +223,7 @@ describe('ProjectAnalyzer', () => {
 	});
 
 	describe('generateProjectPrompt', () => {
-		it('includes module names and dependencies in prompt', () => {
+		it('includes module names and dependencies in prompt (no docs fallback)', () => {
 			const graph = {
 				projectName: 'my-app',
 				modules: [
@@ -240,6 +240,8 @@ describe('ProjectAnalyzer', () => {
 			expect(prompt).toContain('api');
 			expect(prompt).toContain('auth --> api');
 			expect(prompt).toContain('flowchart TD');
+			// Without docs, should use module-structure prompt
+			expect(prompt).toContain('module structure');
 		});
 
 		it('includes file counts', () => {
@@ -252,6 +254,58 @@ describe('ProjectAnalyzer', () => {
 			};
 			const prompt = generateProjectPrompt(graph);
 			expect(prompt).toContain('15 files');
+		});
+
+		it('generates feature-level prompt when documentation is present', () => {
+			const graph = {
+				projectName: 'solar-app',
+				modules: [
+					{ name: 'components', files: [], exports: ['Scene3D'], fileCount: 10 },
+				],
+				dependencies: [],
+				documentation: {
+					files: [{
+						relativePath: 'CLAUDE.md',
+						content: '# Solar Shadow Analyzer\nVisualizes sunlight patterns for buildings.',
+						category: 'claude' as const,
+						priority: 1,
+					}],
+					combinedContent: '--- CLAUDE.md ---\n# Solar Shadow Analyzer\nVisualizes sunlight patterns for buildings.',
+					totalCharsRaw: 60,
+					hasDocumentation: true,
+				},
+			};
+			const prompt = generateProjectPrompt(graph);
+			expect(prompt).toContain('FEATURE-LEVEL');
+			expect(prompt).toContain('Solar Shadow Analyzer');
+			expect(prompt).toContain('PRIMARY context');
+			expect(prompt).toContain('SUPPLEMENTARY context');
+			// Should NOT contain module-structure language
+			expect(prompt).not.toContain('module structure');
+		});
+
+		it('falls back to module-structure when hasDocumentation is false', () => {
+			const graph = {
+				projectName: 'minimal-app',
+				modules: [
+					{ name: 'src', files: [], exports: [], fileCount: 5 },
+				],
+				dependencies: [],
+				documentation: {
+					files: [{
+						relativePath: 'package.json',
+						content: 'Name: minimal-app',
+						category: 'package' as const,
+						priority: 10,
+					}],
+					combinedContent: '--- package.json ---\nName: minimal-app',
+					totalCharsRaw: 17,
+					hasDocumentation: false,  // only package.json, no real docs
+				},
+			};
+			const prompt = generateProjectPrompt(graph);
+			expect(prompt).toContain('module structure');
+			expect(prompt).not.toContain('FEATURE-LEVEL');
 		});
 	});
 });
