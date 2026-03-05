@@ -1,0 +1,43 @@
+src/ReactBehaviorAnalyzer.ts
+  592d168be9bdb037 148,291-292,305,311-322,446,454-467,478,536-537,540-542,544-545,559-586,588-590,592-594
+src/MermaidParser.ts
+  592d168be9bdb037 1-403
+test/MermaidParser.test.ts
+  592d168be9bdb037 1-309
+test/SemanticAnalyzer.test.ts
+  592d168be9bdb037 160,169,171-174,218-219,231-234
+test/MermaidConverter.test.ts
+  592d168be9bdb037 1-197
+src/TldrWriter.ts
+  592d168be9bdb037 244
+test/TldrWriter.test.ts
+  592d168be9bdb037 442-465
+src/StructuralSummary.ts
+  592d168be9bdb037 1-185
+src/extension.ts
+  592d168be9bdb037 12-14,366-456,458,504-543,549-550,554,560
+package.json
+  592d168be9bdb037 5,39-48,92-94
+src/MermaidConverter.ts
+  592d168be9bdb037 1-111
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.8",
+  "base_commit_sha": "e3e875eccea48d9409aecdc329f484d54d4acb89",
+  "prompts": {
+    "592d168be9bdb037": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ae4054e4-a341-4e25-9182-1a9b82c3d7bb",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Vishal Yadav <yadavvi91@gmail.com>",
+      "messages": [],
+      "total_additions": 1474,
+      "total_deletions": 37,
+      "accepted_lines": 1468,
+      "overriden_lines": 0
+    }
+  }
+}
