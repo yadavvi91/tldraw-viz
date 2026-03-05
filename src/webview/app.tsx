@@ -31,12 +31,17 @@ class ErrorBoundary extends Component<
 
 function App() {
 	const [fileData, setFileData] = useState<{ fileContents: string; uri: string } | null>(null);
+	// Key to force remount on refresh (when panel becomes visible again)
+	const [mountKey, setMountKey] = useState(0);
 
 	useEffect(() => {
 		function handleMessage(event: MessageEvent<ExtensionToWebview>) {
 			const msg = event.data;
 			if (msg.type === 'opened-file') {
 				setFileData(msg.data);
+			} else if (msg.type === 'refresh') {
+				// Force remount tldraw to recover from blank canvas
+				setMountKey(k => k + 1);
 			}
 		}
 		window.addEventListener('message', handleMessage);
@@ -50,32 +55,13 @@ function App() {
 
 	return (
 		<ErrorBoundary>
-			<TldrawEditor fileContents={fileData.fileContents} />
+			<TldrawEditor key={mountKey} fileContents={fileData.fileContents} />
 		</ErrorBoundary>
 	);
 }
 
 function TldrawEditor({ fileContents }: { fileContents: string }) {
-	const editorRef = useRef<Editor | null>(null);
-
-	// Listen for refresh messages from the extension (sent when panel becomes visible)
-	useEffect(() => {
-		function handleMessage(event: MessageEvent<ExtensionToWebview>) {
-			if (event.data.type === 'refresh') {
-				console.log('[tldraw-viz] Refreshing viewport via resize');
-				// Trigger a resize event so tldraw's ResizeObserver re-measures the container
-				requestAnimationFrame(() => {
-					window.dispatchEvent(new Event('resize'));
-				});
-			}
-		}
-		window.addEventListener('message', handleMessage);
-		return () => window.removeEventListener('message', handleMessage);
-	}, []);
-
 	const handleMount = useCallback((editor: Editor) => {
-		editorRef.current = editor;
-
 		// Parse the .tldr file format and load into editor
 		try {
 			// Strip vscode:// URLs — tldraw v4 rejects non-standard protocols
@@ -88,9 +74,7 @@ function TldrawEditor({ fileContents }: { fileContents: string }) {
 				const parsed = parseResult.value;
 				// Only load document data, not session state (avoids URI serialization issues)
 				const snapshot = getSnapshot(parsed);
-				console.log('[tldraw-viz] Snapshot document records:', Object.keys(snapshot.document?.store || {}).length);
 				loadSnapshot(editor.store, { document: snapshot.document });
-				console.log('[tldraw-viz] Loaded snapshot successfully');
 			} else {
 				console.error('[tldraw-viz] Parse failed:', parseResult.error);
 			}
@@ -104,56 +88,55 @@ function TldrawEditor({ fileContents }: { fileContents: string }) {
 		// Zoom to fit content
 		editor.zoomToFit({ animation: { duration: 0 } });
 
-		// Listen for selection changes
+		// Listen for selection changes (debounced to avoid interfering with zoom/pan)
 		let lastSelectedId: string | null = null;
+		let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 		editor.store.listen(
 			() => {
-				const selectedIds = editor.getSelectedShapeIds();
-				if (selectedIds.length !== 1) {
-					lastSelectedId = null;
-					return;
-				}
+				if (debounceTimer) clearTimeout(debounceTimer);
+				debounceTimer = setTimeout(() => {
+					const selectedIds = editor.getSelectedShapeIds();
+					if (selectedIds.length !== 1) {
+						lastSelectedId = null;
+						return;
+					}
 
-				const shapeId = selectedIds[0];
-				if (shapeId === lastSelectedId) return;
-				lastSelectedId = shapeId;
+					const shapeId = selectedIds[0];
+					if (shapeId === lastSelectedId) return;
+					lastSelectedId = shapeId;
 
-				const shape = editor.getShape(shapeId);
-				console.log('[tldraw-viz] Selected shape:', shapeId, 'type:', shape?.type, 'meta:', JSON.stringify(shape?.meta));
-				if (!shape || shape.type !== 'geo') return;
+					const shape = editor.getShape(shapeId);
+					if (!shape || shape.type !== 'geo') return;
 
-				const meta = shape.meta as {
-					sourceLine?: number;
-					sourceName?: string;
-					sourceFile?: string;
-					tldrawViz?: { sourceFile?: string };
-				} | undefined;
-				if (!meta) return;
+					const meta = shape.meta as {
+						sourceLine?: number;
+						sourceName?: string;
+						sourceFile?: string;
+					} | undefined;
+					if (!meta) return;
 
-				// Get source info from shape meta or document meta
-				const docMeta = (editor.getDocumentSettings().meta as {
-					tldrawViz?: { sourceFile?: string };
-				} | undefined);
-				console.log('[tldraw-viz] docMeta:', JSON.stringify(docMeta));
-				const file = meta.sourceFile || docMeta?.tldrawViz?.sourceFile || '';
-				const line = meta.sourceLine || 0;
-				const name = meta.sourceName || '';
+					const docMeta = (editor.getDocumentSettings().meta as {
+						tldrawViz?: { sourceFile?: string };
+					} | undefined);
+					const file = meta.sourceFile || docMeta?.tldrawViz?.sourceFile || '';
+					const line = meta.sourceLine || 0;
+					const name = meta.sourceName || '';
 
-				console.log('[tldraw-viz] Navigate:', { file, line, name });
-				if (!file) return;
+					if (!file) return;
 
-				vscode.postMessage({
-					type: 'shapeClicked',
-					data: { file, line, name },
-				});
+					vscode.postMessage({
+						type: 'shapeClicked',
+						data: { file, line, name },
+					});
+				}, 150);
 			},
 			{ scope: 'session' },
 		);
 	}, [fileContents]);
 
 	return (
-		<div style={{ position: 'fixed', inset: 0 }}>
-			<Tldraw onMount={handleMount} />
+		<div style={{ width: '100vw', height: '100vh' }}>
+			<Tldraw onMount={handleMount} autoFocus={false} />
 		</div>
 	);
 }
