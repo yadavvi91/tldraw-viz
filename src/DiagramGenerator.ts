@@ -76,7 +76,7 @@ export function layoutCallGraph(graph: CallGraph): LayoutResult {
 		}
 	}
 
-	// Add edges (only for valid node pairs)
+	// Add edges (only for valid node pairs — not subgraph IDs)
 	const nodeIds = new Set(graph.nodes.map(n => n.id));
 	for (const edge of graph.edges) {
 		if (nodeIds.has(edge.from) && nodeIds.has(edge.to)) {
@@ -84,7 +84,12 @@ export function layoutCallGraph(graph: CallGraph): LayoutResult {
 		}
 	}
 
-	dagre.layout(g);
+	try {
+		dagre.layout(g);
+	} catch {
+		// Fallback: simple grid layout if dagre fails (e.g. compound graph edge issues)
+		return fallbackGridLayout(graph);
+	}
 
 	// Map dagre positions back to our nodes
 	const nodes: PositionedNode[] = graph.nodes.map(node => {
@@ -114,6 +119,48 @@ export function layoutCallGraph(graph: CallGraph): LayoutResult {
 					height: dagreGroup.height || 0,
 				});
 			}
+		}
+	}
+
+	return { nodes, groups };
+}
+
+/**
+ * Simple grid layout fallback when dagre fails (e.g. compound graph issues).
+ * Places nodes in a grid, then computes group bounding boxes from their children.
+ */
+function fallbackGridLayout(graph: CallGraph): LayoutResult {
+	const cols = Math.ceil(Math.sqrt(graph.nodes.length));
+	const nodes: PositionedNode[] = graph.nodes.map((node, i) => {
+		const dims = getNodeDimensions(node);
+		const col = i % cols;
+		const row = Math.floor(i / cols);
+		return {
+			...node,
+			x: col * (DEFAULT_WIDTH + NODE_SEP),
+			y: row * (DEFAULT_HEIGHT + RANK_SEP),
+			width: dims.width,
+			height: dims.height,
+		};
+	});
+
+	const groups: PositionedGroup[] = [];
+	if (graph.groups) {
+		const nodeMap = new Map(nodes.map(n => [n.id, n]));
+		for (const group of graph.groups) {
+			const children = group.nodeIds.map(id => nodeMap.get(id)).filter(Boolean) as PositionedNode[];
+			if (children.length === 0) continue;
+			const minX = Math.min(...children.map(n => n.x)) - GROUP_PADDING / 2;
+			const minY = Math.min(...children.map(n => n.y)) - GROUP_PADDING;
+			const maxX = Math.max(...children.map(n => n.x + n.width)) + GROUP_PADDING / 2;
+			const maxY = Math.max(...children.map(n => n.y + n.height)) + GROUP_PADDING / 2;
+			groups.push({
+				...group,
+				x: minX,
+				y: minY,
+				width: maxX - minX,
+				height: maxY - minY,
+			});
 		}
 	}
 

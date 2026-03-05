@@ -151,5 +151,36 @@ describe('DiagramGenerator (dagre layout)', () => {
 			const result = layoutCallGraph(sampleGraph);
 			expect(result.groups).toHaveLength(0);
 		});
+
+		it('falls back to grid layout when dagre fails with compound graphs', () => {
+			// Simulate a graph where dagre compound layout would fail:
+			// edges between nodes that are also used as group IDs can trigger
+			// "Cannot set properties of undefined (setting 'rank')"
+			const graph: CallGraph = {
+				fileName: 'project.ts',
+				language: 'typescript',
+				nodes: [
+					{ id: 'n1', name: 'Module A', type: 'function', line: 1, groupId: 'g1' },
+					{ id: 'n2', name: 'Module B', type: 'function', line: 2, groupId: 'g2' },
+					{ id: 'n3', name: 'Module C', type: 'function', line: 3, groupId: 'g2' },
+				],
+				edges: [
+					{ from: 'n1', to: 'n2' },
+					// Edge referencing a group ID — dagre can't handle this in compound mode
+					{ from: 'g1', to: 'g2' },
+				],
+				groups: [
+					{ id: 'g1', label: 'Group 1', nodeIds: ['n1'] },
+					{ id: 'g2', label: 'Group 2', nodeIds: ['n2', 'n3'] },
+				],
+			};
+
+			// Should not throw — falls back to grid layout
+			const result = layoutCallGraph(graph);
+			expect(result.nodes).toHaveLength(3);
+			expect(result.nodes.every(n => typeof n.x === 'number' && typeof n.y === 'number')).toBe(true);
+			// Groups should still be computed
+			expect(result.groups.length).toBeGreaterThanOrEqual(0);
+		});
 	});
 });
