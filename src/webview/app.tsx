@@ -199,7 +199,8 @@ function TldrawEditor({ fileContents, onRecoveryNeeded }: { fileContents: string
 				}
 
 				// Check if tldraw is actually rendering shapes visually
-				const shapeElements = container.querySelectorAll('[data-shape-type]');
+				// tldraw v4 uses className "tl-shape" on rendered shape wrappers
+				const shapeElements = container.querySelectorAll('.tl-shape');
 				if (shapeElements.length === 0) {
 					blankCount++;
 					debugLog(`Health: ${shapeCount} shapes in store but 0 rendered (${blankCount}/3)`);
