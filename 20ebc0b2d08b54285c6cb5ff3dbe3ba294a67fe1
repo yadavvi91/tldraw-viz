@@ -1,0 +1,31 @@
+src/extension.ts
+  592d168be9bdb037 15,20-21,495-637,725-735,743-746
+src/ClaudeService.ts
+  592d168be9bdb037 1-48
+test/ClaudeService.test.ts
+  592d168be9bdb037 1-61
+src/TldrWriter.ts
+  592d168be9bdb037 244
+package.json
+  592d168be9bdb037 5,54-73
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.8",
+  "base_commit_sha": "20ebc0b2d08b54285c6cb5ff3dbe3ba294a67fe1",
+  "prompts": {
+    "592d168be9bdb037": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ae4054e4-a341-4e25-9182-1a9b82c3d7bb",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Vishal Yadav <yadavvi91@gmail.com>",
+      "messages": [],
+      "total_additions": 292,
+      "total_deletions": 3,
+      "accepted_lines": 292,
+      "overriden_lines": 0
+    }
+  }
+}
