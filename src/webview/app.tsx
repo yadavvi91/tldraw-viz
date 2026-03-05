@@ -1,6 +1,6 @@
 import React, { Component, useCallback, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Tldraw, type Editor, parseTldrawJsonFile, loadSnapshot, getSnapshot } from 'tldraw';
+import { Tldraw, Box, type Editor, parseTldrawJsonFile, loadSnapshot, getSnapshot } from 'tldraw';
 import 'tldraw/tldraw.css';
 import type { ExtensionToWebview } from '../messages';
 import { vscode } from './vscode';
@@ -85,6 +85,42 @@ function App() {
 	);
 }
 
+/**
+ * Force tldraw to recalculate viewport bounds from the container element.
+ * In VS Code's nested iframe, getBoundingClientRect() can temporarily return
+ * zero dimensions, causing tldraw to think the viewport is empty and unmount
+ * all shape DOM elements. This function forces a re-evaluation.
+ */
+function forceViewportUpdate(ed: Editor): boolean {
+	try {
+		const container = ed.getContainer();
+		if (!container?.isConnected) return false;
+
+		const rect = container.getBoundingClientRect();
+		if (rect.width > 1 && rect.height > 1) {
+			// Container has real dimensions — tell tldraw to use them
+			ed.updateViewportScreenBounds(container);
+			ed.zoomToFit({ animation: { duration: 0 } });
+			return true;
+		}
+
+		// Container reports bad dimensions — use fallback size
+		// VS Code webview body should have proper dimensions even if nested container doesn't
+		const fallbackW = document.body.clientWidth || window.innerWidth || 800;
+		const fallbackH = document.body.clientHeight || window.innerHeight || 600;
+		if (fallbackW > 1 && fallbackH > 1) {
+			debugLog(`Viewport fix: using fallback ${fallbackW}x${fallbackH}`);
+			ed.updateViewportScreenBounds(new Box(0, 0, fallbackW, fallbackH));
+			ed.zoomToFit({ animation: { duration: 0 } });
+			return true;
+		}
+
+		return false;
+	} catch {
+		return false;
+	}
+}
+
 function TldrawEditor({ fileContents, onRecoveryNeeded }: { fileContents: string; onRecoveryNeeded: () => void }) {
 	const [editor, setEditor] = useState<Editor | null>(null);
 
@@ -115,8 +151,30 @@ function TldrawEditor({ fileContents, onRecoveryNeeded }: { fileContents: string
 		}
 
 		ed.zoomToFit({ animation: { duration: 0 } });
+
+		// Delayed viewport fix: VS Code iframe may not have correct dimensions immediately
+		// Schedule multiple retries to catch the moment dimensions become available
+		for (const delay of [100, 500, 1000, 2000]) {
+			setTimeout(() => forceViewportUpdate(ed), delay);
+		}
+
 		setEditor(ed);
 	}, [fileContents]);
+
+	// Fix viewport when tab becomes visible (VS Code may have zeroed dimensions while hidden)
+	useEffect(() => {
+		if (!editor) return;
+
+		function handleVisibility() {
+			if (!document.hidden) {
+				// Small delay to let VS Code finish layout before measuring
+				setTimeout(() => forceViewportUpdate(editor!), 200);
+			}
+		}
+
+		document.addEventListener('visibilitychange', handleVisibility);
+		return () => document.removeEventListener('visibilitychange', handleVisibility);
+	}, [editor]);
 
 	// Selection listener — properly cleaned up on unmount
 	useEffect(() => {
@@ -173,11 +231,16 @@ function TldrawEditor({ fileContents, onRecoveryNeeded }: { fileContents: string
 		};
 	}, [editor]);
 
-	// Health check: detect blank canvas and auto-recover
+	// Health check: detect blank canvas and recover by fixing viewport bounds
+	// Root cause: VS Code's nested iframe can cause getBoundingClientRect() to
+	// return zero dimensions, making tldraw think the viewport is empty and
+	// unmounting all shape DOM elements. Instead of remounting (which recreates
+	// the same problem), we force a viewport bounds recalculation.
 	useEffect(() => {
 		if (!editor) return;
 
 		let blankCount = 0;
+		let viewportFixAttempts = 0;
 
 		const interval = setInterval(() => {
 			try {
@@ -193,23 +256,31 @@ function TldrawEditor({ fileContents, onRecoveryNeeded }: { fileContents: string
 					debugLog(`Health: container detached (${blankCount}/3)`);
 					if (blankCount >= 3) {
 						blankCount = 0;
-						onRecoveryNeeded();
+						onRecoveryNeeded(); // Container truly gone — remount
 					}
 					return;
 				}
 
 				// Check if tldraw is actually rendering shapes visually
-				// tldraw v4 uses className "tl-shape" on rendered shape wrappers
 				const shapeElements = container.querySelectorAll('.tl-shape');
 				if (shapeElements.length === 0) {
 					blankCount++;
-					debugLog(`Health: ${shapeCount} shapes in store but 0 rendered (${blankCount}/3)`);
-					if (blankCount >= 3) {
+					viewportFixAttempts++;
+					debugLog(`Health: ${shapeCount} shapes but 0 rendered — fixing viewport (attempt ${viewportFixAttempts})`);
+
+					// First, try fixing viewport bounds (much better than remounting)
+					const fixed = forceViewportUpdate(editor);
+
+					if (!fixed || viewportFixAttempts > 10) {
+						// Viewport fix failed repeatedly — fall back to full remount
+						debugLog('Viewport fix exhausted — remounting');
 						blankCount = 0;
+						viewportFixAttempts = 0;
 						onRecoveryNeeded();
 					}
 				} else {
 					blankCount = 0;
+					viewportFixAttempts = 0;
 				}
 			} catch {
 				blankCount++;
