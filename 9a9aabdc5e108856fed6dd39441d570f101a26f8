@@ -1,0 +1,27 @@
+test/GranularityFilter.test.ts
+  592d168be9bdb037 1-68
+src/GranularityFilter.ts
+  592d168be9bdb037 1-57
+src/extension.ts
+  592d168be9bdb037 7,13-28,148,175-182,194
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.8",
+  "base_commit_sha": "9a9aabdc5e108856fed6dd39441d570f101a26f8",
+  "prompts": {
+    "592d168be9bdb037": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ae4054e4-a341-4e25-9182-1a9b82c3d7bb",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Vishal Yadav <yadavvi91@gmail.com>",
+      "messages": [],
+      "total_additions": 181,
+      "total_deletions": 31,
+      "accepted_lines": 152,
+      "overriden_lines": 0
+    }
+  }
+}
