@@ -1,4 +1,4 @@
-import React, { Component, useCallback, useEffect, useRef, useState } from 'react';
+import React, { Component, useCallback, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Tldraw, type Editor, parseTldrawJsonFile, loadSnapshot, getSnapshot } from 'tldraw';
 import 'tldraw/tldraw.css';
@@ -31,7 +31,7 @@ class ErrorBoundary extends Component<
 
 function App() {
 	const [fileData, setFileData] = useState<{ fileContents: string; uri: string } | null>(null);
-	// Key to force remount on refresh (when panel becomes visible again)
+	// Key to force remount on refresh (when panel becomes visible after being hidden)
 	const [mountKey, setMountKey] = useState(0);
 
 	useEffect(() => {
@@ -40,7 +40,6 @@ function App() {
 			if (msg.type === 'opened-file') {
 				setFileData(msg.data);
 			} else if (msg.type === 'refresh') {
-				// Force remount tldraw to recover from blank canvas
 				setMountKey(k => k + 1);
 			}
 		}
@@ -50,7 +49,7 @@ function App() {
 	}, []);
 
 	if (!fileData) {
-		return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', color: '#888' }}>Loading diagram...</div>;
+		return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#888' }}>Loading diagram...</div>;
 	}
 
 	return (
@@ -61,20 +60,19 @@ function App() {
 }
 
 function TldrawEditor({ fileContents }: { fileContents: string }) {
-	const handleMount = useCallback((editor: Editor) => {
-		// Parse the .tldr file format and load into editor
+	const [editor, setEditor] = useState<Editor | null>(null);
+
+	const handleMount = useCallback((ed: Editor) => {
 		try {
-			// Strip vscode:// URLs — tldraw v4 rejects non-standard protocols
 			const sanitized = fileContents.replace(/"url"\s*:\s*"vscode:\/\/[^"]*"/g, '"url": ""');
 			const parseResult = parseTldrawJsonFile({
 				json: sanitized,
-				schema: editor.store.schema,
+				schema: ed.store.schema,
 			});
 			if (parseResult.ok) {
 				const parsed = parseResult.value;
-				// Only load document data, not session state (avoids URI serialization issues)
 				const snapshot = getSnapshot(parsed);
-				loadSnapshot(editor.store, { document: snapshot.document });
+				loadSnapshot(ed.store, { document: snapshot.document });
 			} else {
 				console.error('[tldraw-viz] Parse failed:', parseResult.error);
 			}
@@ -82,16 +80,19 @@ function TldrawEditor({ fileContents }: { fileContents: string }) {
 			console.error('[tldraw-viz] Error loading file:', err);
 		}
 
-		// Set read-only mode
-		editor.updateInstanceState({ isReadonly: true });
+		ed.updateInstanceState({ isReadonly: true });
+		ed.zoomToFit({ animation: { duration: 0 } });
+		setEditor(ed);
+	}, [fileContents]);
 
-		// Zoom to fit content
-		editor.zoomToFit({ animation: { duration: 0 } });
+	// Selection listener — properly cleaned up on unmount
+	useEffect(() => {
+		if (!editor) return;
 
-		// Listen for selection changes (debounced to avoid interfering with zoom/pan)
 		let lastSelectedId: string | null = null;
 		let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-		editor.store.listen(
+
+		const unsub = editor.store.listen(
 			() => {
 				if (debounceTimer) clearTimeout(debounceTimer);
 				debounceTimer = setTimeout(() => {
@@ -132,10 +133,15 @@ function TldrawEditor({ fileContents }: { fileContents: string }) {
 			},
 			{ scope: 'session' },
 		);
-	}, [fileContents]);
+
+		return () => {
+			unsub();
+			if (debounceTimer) clearTimeout(debounceTimer);
+		};
+	}, [editor]);
 
 	return (
-		<div style={{ width: '100vw', height: '100vh' }}>
+		<div style={{ width: '100%', height: '100%' }}>
 			<Tldraw onMount={handleMount} autoFocus={false} />
 		</div>
 	);
