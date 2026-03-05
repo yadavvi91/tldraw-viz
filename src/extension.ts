@@ -36,6 +36,7 @@ async function loadTldrawConfig(workspaceRoot: vscode.Uri): Promise<TldrawConfig
 			skip: vsConfig.get<string[]>('skipPatterns', DEFAULT_CONFIG.skip),
 			minFunctions: vsConfig.get<number>('minFunctions', DEFAULT_CONFIG.minFunctions),
 			flows: DEFAULT_CONFIG.flows,
+			modules: DEFAULT_CONFIG.modules,
 		};
 	}
 }
