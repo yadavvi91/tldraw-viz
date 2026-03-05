@@ -1,6 +1,6 @@
 import React, { Component, useCallback, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Tldraw, Box, type Editor, parseTldrawJsonFile, loadSnapshot, getSnapshot } from 'tldraw';
+import { Tldraw, type Editor, parseTldrawJsonFile, loadSnapshot, getSnapshot } from 'tldraw';
 import 'tldraw/tldraw.css';
 import type { ExtensionToWebview } from '../messages';
 import { vscode } from './vscode';
@@ -90,6 +90,9 @@ function App() {
  * In VS Code's nested iframe, getBoundingClientRect() can temporarily return
  * zero dimensions, causing tldraw to think the viewport is empty and unmount
  * all shape DOM elements. This function forces a re-evaluation.
+ *
+ * IMPORTANT: Do NOT call this during tldraw's initialization — it interferes
+ * with tldraw's _willSetInitialBounds flag. Only use for recovery.
  */
 function forceViewportUpdate(ed: Editor): boolean {
 	try {
@@ -97,25 +100,15 @@ function forceViewportUpdate(ed: Editor): boolean {
 		if (!container?.isConnected) return false;
 
 		const rect = container.getBoundingClientRect();
-		if (rect.width > 1 && rect.height > 1) {
-			// Container has real dimensions — tell tldraw to use them
-			ed.updateViewportScreenBounds(container);
-			ed.zoomToFit({ animation: { duration: 0 } });
-			return true;
+		if (rect.width < 2 || rect.height < 2) {
+			debugLog(`Viewport fix: container too small (${rect.width}x${rect.height}), skipping`);
+			return false;
 		}
 
-		// Container reports bad dimensions — use fallback size
-		// VS Code webview body should have proper dimensions even if nested container doesn't
-		const fallbackW = document.body.clientWidth || window.innerWidth || 800;
-		const fallbackH = document.body.clientHeight || window.innerHeight || 600;
-		if (fallbackW > 1 && fallbackH > 1) {
-			debugLog(`Viewport fix: using fallback ${fallbackW}x${fallbackH}`);
-			ed.updateViewportScreenBounds(new Box(0, 0, fallbackW, fallbackH));
-			ed.zoomToFit({ animation: { duration: 0 } });
-			return true;
-		}
-
-		return false;
+		ed.updateViewportScreenBounds(container);
+		ed.zoomToFit({ animation: { duration: 0 } });
+		debugLog(`Viewport fix: updated to ${Math.round(rect.width)}x${Math.round(rect.height)}`);
+		return true;
 	} catch {
 		return false;
 	}
@@ -151,13 +144,6 @@ function TldrawEditor({ fileContents, onRecoveryNeeded }: { fileContents: string
 		}
 
 		ed.zoomToFit({ animation: { duration: 0 } });
-
-		// Delayed viewport fix: VS Code iframe may not have correct dimensions immediately
-		// Schedule multiple retries to catch the moment dimensions become available
-		for (const delay of [100, 500, 1000, 2000]) {
-			setTimeout(() => forceViewportUpdate(ed), delay);
-		}
-
 		setEditor(ed);
 	}, [fileContents]);
 

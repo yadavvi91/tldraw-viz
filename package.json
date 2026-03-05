@@ -2,7 +2,7 @@
   "name": "tldraw-viz",
   "displayName": "tldraw Code Visualizer",
   "description": "Auto-generate tldraw call graph diagrams from source code",
-  "version": "2.0.15",
+  "version": "2.0.16",
   "publisher": "yadavvi91",
   "license": "MIT",
   "repository": {
