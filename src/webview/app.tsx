@@ -1,9 +1,33 @@
-import React, { useEffect, useState } from 'react';
+import React, { Component, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Tldraw, type Editor } from 'tldraw';
+import { Tldraw, type Editor, parseTldrawJsonFile, loadSnapshot, getSnapshot } from 'tldraw';
 import 'tldraw/tldraw.css';
 import type { ExtensionToWebview } from '../messages';
 import { vscode } from './vscode';
+
+class ErrorBoundary extends Component<
+	{ children: React.ReactNode },
+	{ error: Error | null }
+> {
+	state = { error: null as Error | null };
+
+	static getDerivedStateFromError(error: Error) {
+		return { error };
+	}
+
+	render() {
+		if (this.state.error) {
+			return (
+				<div style={{ padding: 24, color: '#c00', fontFamily: 'monospace', whiteSpace: 'pre-wrap' }}>
+					<h3>tldraw failed to render</h3>
+					<p>{this.state.error.message}</p>
+					<pre>{this.state.error.stack}</pre>
+				</div>
+			);
+		}
+		return this.props.children;
+	}
+}
 
 function App() {
 	const [fileData, setFileData] = useState<{ fileContents: string; uri: string } | null>(null);
@@ -24,17 +48,35 @@ function App() {
 		return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', color: '#888' }}>Loading diagram...</div>;
 	}
 
-	return <TldrawEditor fileContents={fileData.fileContents} uri={fileData.uri} />;
+	return (
+		<ErrorBoundary>
+			<TldrawEditor fileContents={fileData.fileContents} />
+		</ErrorBoundary>
+	);
 }
 
-function TldrawEditor({ fileContents, uri }: { fileContents: string; uri: string }) {
+function TldrawEditor({ fileContents }: { fileContents: string }) {
 	const handleMount = (editor: Editor) => {
-		// Load the .tldr file contents
+		// Parse the .tldr file format and load into editor
 		try {
-			const file = JSON.parse(fileContents);
-			editor.loadSnapshot(file);
-		} catch {
-			// File may already be loaded via persistenceKey
+			// Strip vscode:// URLs — tldraw v4 rejects non-standard protocols
+			const sanitized = fileContents.replace(/"url"\s*:\s*"vscode:\/\/[^"]*"/g, '"url": ""');
+			const parseResult = parseTldrawJsonFile({
+				json: sanitized,
+				schema: editor.store.schema,
+			});
+			if (parseResult.ok) {
+				const parsed = parseResult.value;
+				// Only load document data, not session state (avoids URI serialization issues)
+				const snapshot = getSnapshot(parsed);
+				console.log('[tldraw-viz] Snapshot document records:', Object.keys(snapshot.document?.store || {}).length);
+				loadSnapshot(editor.store, { document: snapshot.document });
+				console.log('[tldraw-viz] Loaded snapshot successfully');
+			} else {
+				console.error('[tldraw-viz] Parse failed:', parseResult.error);
+			}
+		} catch (err) {
+			console.error('[tldraw-viz] Error loading file:', err);
 		}
 
 		// Set read-only mode
@@ -58,6 +100,7 @@ function TldrawEditor({ fileContents, uri }: { fileContents: string; uri: string
 				lastSelectedId = shapeId;
 
 				const shape = editor.getShape(shapeId);
+				console.log('[tldraw-viz] Selected shape:', shapeId, 'type:', shape?.type, 'meta:', JSON.stringify(shape?.meta));
 				if (!shape || shape.type !== 'geo') return;
 
 				const meta = shape.meta as {
@@ -72,11 +115,13 @@ function TldrawEditor({ fileContents, uri }: { fileContents: string; uri: string
 				const docMeta = (editor.getDocumentSettings().meta as {
 					tldrawViz?: { sourceFile?: string };
 				} | undefined);
+				console.log('[tldraw-viz] docMeta:', JSON.stringify(docMeta));
 				const file = meta.sourceFile || docMeta?.tldrawViz?.sourceFile || '';
 				const line = meta.sourceLine || 0;
 				const name = meta.sourceName || '';
 
-				if (!file || line === 0) return;
+				console.log('[tldraw-viz] Navigate:', { file, line, name });
+				if (!file) return;
 
 				vscode.postMessage({
 					type: 'shapeClicked',
@@ -89,10 +134,7 @@ function TldrawEditor({ fileContents, uri }: { fileContents: string; uri: string
 
 	return (
 		<div style={{ position: 'fixed', inset: 0 }}>
-			<Tldraw
-				onMount={handleMount}
-				persistenceKey={uri}
-			/>
+			<Tldraw onMount={handleMount} />
 		</div>
 	);
 }

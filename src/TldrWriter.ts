@@ -100,22 +100,6 @@ function makeFrameShape(
 }
 
 /** Build a vscode:// navigation URL for a shape */
-function buildNavigationUrl(
-	sourceFile: string,
-	line: number,
-	name: string,
-): string {
-	if (!sourceFile || line === 0) {
-		return '';
-	}
-	const params = new URLSearchParams({
-		file: sourceFile,
-		line: String(line),
-		name,
-	});
-	return `vscode://yadavvi91.tldraw-viz/navigate?${params.toString()}`;
-}
-
 /** Create a geo shape record with role-aware visual properties */
 function makeGeoShape(
 	node: PositionedNode,
@@ -130,7 +114,6 @@ function makeGeoShape(
 		|| 'black';
 	const text = node.label || (node.parent ? `${node.parent}.${node.name}()` : `${node.name}()`);
 	const shapeSourceFile = node.sourceFile || documentSourceFile;
-	const url = buildNavigationUrl(shapeSourceFile, node.line, node.name);
 
 	return {
 		id: `shape:${node.id}`,
@@ -157,7 +140,7 @@ function makeGeoShape(
 			verticalAlign: 'middle',
 			growY: 0,
 			labelColor: 'black',
-			url,
+			url: '',
 			scale: 1,
 		},
 		meta: {

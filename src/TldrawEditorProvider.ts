@@ -12,13 +12,13 @@ async function navigateToSource(
 	findCurrentLine: (root: vscode.Uri, file: string, name: string, fallback: number) => Promise<number>,
 ): Promise<void> {
 	const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri;
-	if (!workspaceRoot || !file || line === 0) return;
+	if (!workspaceRoot || !file) return;
 
 	const freshLookup = vscode.workspace.getConfiguration('tldraw-viz')
 		.get<boolean>('freshLineLookup', true);
 
 	let resolvedLine = line;
-	if (freshLookup && name && line > 0) {
+	if (freshLookup && name) {
 		resolvedLine = await findCurrentLine(workspaceRoot, file, name, line);
 	}
 
@@ -81,7 +81,12 @@ export class TldrawEditorProvider implements vscode.CustomReadonlyEditorProvider
 		document: TldrawDocument,
 		webviewPanel: vscode.WebviewPanel,
 	): Promise<void> {
-		webviewPanel.webview.options = { enableScripts: true };
+		webviewPanel.webview.options = {
+			enableScripts: true,
+			localResourceRoots: [
+				vscode.Uri.joinPath(this.context.extensionUri, 'dist'),
+			],
+		};
 		webviewPanel.webview.html = this.getHtml(webviewPanel.webview);
 
 		webviewPanel.webview.onDidReceiveMessage(
@@ -99,6 +104,7 @@ export class TldrawEditorProvider implements vscode.CustomReadonlyEditorProvider
 						break;
 					}
 					case 'shapeClicked': {
+						console.log('[tldraw-viz] shapeClicked received:', JSON.stringify(msg.data));
 						await navigateToSource(
 							msg.data.file,
 							msg.data.line,
@@ -128,11 +134,25 @@ export class TldrawEditorProvider implements vscode.CustomReadonlyEditorProvider
 	<link rel="stylesheet" href="${cssUri}" />
 	<style>
 		html, body, #root { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; }
+		#debug { position: fixed; top: 0; left: 0; right: 0; z-index: 99999; background: #ffe0e0; color: #900; padding: 8px 12px; font: 12px monospace; white-space: pre-wrap; display: none; }
 	</style>
 </head>
 <body>
-	<div id="root"></div>
-	<script src="${scriptUri}"></script>
+	<div id="debug"></div>
+	<div id="root">Initializing tldraw viewer...</div>
+	<script>
+		window.onerror = function(msg, src, line, col, err) {
+			var d = document.getElementById('debug');
+			d.style.display = 'block';
+			d.textContent = 'JS Error: ' + msg + '\\nSource: ' + src + ':' + line + ':' + col + '\\n' + (err && err.stack || '');
+		};
+		window.addEventListener('unhandledrejection', function(e) {
+			var d = document.getElementById('debug');
+			d.style.display = 'block';
+			d.textContent = 'Unhandled promise rejection: ' + (e.reason && e.reason.message || e.reason) + '\\n' + (e.reason && e.reason.stack || '');
+		});
+	</script>
+	<script type="module" src="${scriptUri}"></script>
 </body>
 </html>`;
 	}
