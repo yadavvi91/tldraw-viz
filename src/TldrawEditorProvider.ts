@@ -22,19 +22,28 @@ async function navigateToSource(
 		resolvedLine = await findCurrentLine(workspaceRoot, file, name, line);
 	}
 
-	const zeroBasedLine = Math.max(0, resolvedLine - 1);
 	const fileUri = vscode.Uri.joinPath(workspaceRoot, file);
 
 	try {
 		const doc = await vscode.workspace.openTextDocument(fileUri);
-		const editor = await vscode.window.showTextDocument(doc, {
-			viewColumn: vscode.ViewColumn.One,
-			selection: new vscode.Range(zeroBasedLine, 0, zeroBasedLine, 0),
-		});
-		editor.revealRange(
-			new vscode.Range(zeroBasedLine, 0, zeroBasedLine, 0),
-			vscode.TextEditorRevealType.InCenter,
-		);
+		// Open beside the viewer so the tldraw panel stays visible
+		const showOptions: vscode.TextDocumentShowOptions = {
+			viewColumn: vscode.ViewColumn.Beside,
+			preserveFocus: false,
+		};
+		// Only set cursor position if we have a real line number
+		if (resolvedLine > 0) {
+			const zeroBasedLine = resolvedLine - 1;
+			showOptions.selection = new vscode.Range(zeroBasedLine, 0, zeroBasedLine, 0);
+		}
+		const editor = await vscode.window.showTextDocument(doc, showOptions);
+		if (resolvedLine > 0) {
+			const zeroBasedLine = resolvedLine - 1;
+			editor.revealRange(
+				new vscode.Range(zeroBasedLine, 0, zeroBasedLine, 0),
+				vscode.TextEditorRevealType.InCenter,
+			);
+		}
 	} catch {
 		// Silently fail — file may have been deleted
 	}
