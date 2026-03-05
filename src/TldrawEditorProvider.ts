@@ -98,6 +98,13 @@ export class TldrawEditorProvider implements vscode.CustomReadonlyEditorProvider
 		};
 		webviewPanel.webview.html = this.getHtml(webviewPanel.webview);
 
+		// When the panel becomes visible again, tell the webview to refresh tldraw
+		webviewPanel.onDidChangeViewState(() => {
+			if (webviewPanel.visible) {
+				webviewPanel.webview.postMessage({ type: 'refresh' });
+			}
+		});
+
 		webviewPanel.webview.onDidReceiveMessage(
 			async (msg: WebviewToExtension) => {
 				switch (msg.type) {

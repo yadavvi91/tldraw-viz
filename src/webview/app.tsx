@@ -1,4 +1,4 @@
-import React, { Component, useEffect, useState } from 'react';
+import React, { Component, useCallback, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Tldraw, type Editor, parseTldrawJsonFile, loadSnapshot, getSnapshot } from 'tldraw';
 import 'tldraw/tldraw.css';
@@ -56,7 +56,23 @@ function App() {
 }
 
 function TldrawEditor({ fileContents }: { fileContents: string }) {
-	const handleMount = (editor: Editor) => {
+	const editorRef = useRef<Editor | null>(null);
+
+	// Listen for refresh messages from the extension (sent when panel becomes visible)
+	useEffect(() => {
+		function handleMessage(event: MessageEvent<ExtensionToWebview>) {
+			if (event.data.type === 'refresh' && editorRef.current) {
+				console.log('[tldraw-viz] Refreshing viewport');
+				editorRef.current.updateViewportScreenBounds();
+			}
+		}
+		window.addEventListener('message', handleMessage);
+		return () => window.removeEventListener('message', handleMessage);
+	}, []);
+
+	const handleMount = useCallback((editor: Editor) => {
+		editorRef.current = editor;
+
 		// Parse the .tldr file format and load into editor
 		try {
 			// Strip vscode:// URLs — tldraw v4 rejects non-standard protocols
@@ -130,7 +146,7 @@ function TldrawEditor({ fileContents }: { fileContents: string }) {
 			},
 			{ scope: 'session' },
 		);
-	};
+	}, [fileContents]);
 
 	return (
 		<div style={{ position: 'fixed', inset: 0 }}>

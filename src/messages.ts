@@ -1,6 +1,7 @@
 /** Messages from the extension to the webview */
 export type ExtensionToWebview =
-	| { type: 'opened-file'; data: { fileContents: string; uri: string } };
+	| { type: 'opened-file'; data: { fileContents: string; uri: string } }
+	| { type: 'refresh' };
 
 /** Messages from the webview to the extension */
 export type WebviewToExtension =
