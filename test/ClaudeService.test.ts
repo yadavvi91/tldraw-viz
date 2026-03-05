@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { extractMermaidBlock, estimateCost } from '../src/ClaudeService';
+import { extractMermaidBlock, ensureMermaidStyles, estimateCost } from '../src/ClaudeService';
 
 describe('extractMermaidBlock', () => {
 	it('extracts from ```mermaid fences', () => {
@@ -37,6 +37,46 @@ describe('extractMermaidBlock', () => {
 		].join('\n');
 		const input = `\`\`\`mermaid\n${mermaid}\n\`\`\``;
 		expect(extractMermaidBlock(input)).toBe(mermaid);
+	});
+});
+
+describe('ensureMermaidStyles', () => {
+	it('appends missing classDef for used classes', () => {
+		const mermaid = 'flowchart TD\n  A --> B\n  class A userAction\n  class B process';
+		const result = ensureMermaidStyles(mermaid);
+		expect(result).toContain('classDef userAction fill:#E3F2FD');
+		expect(result).toContain('classDef process fill:#F3E5F5');
+	});
+
+	it('does not duplicate existing classDef lines', () => {
+		const mermaid = 'flowchart TD\n  A --> B\n  classDef userAction fill:#E3F2FD,stroke:#1565C0,color:#0D47A1\n  class A userAction';
+		const result = ensureMermaidStyles(mermaid);
+		const count = (result.match(/classDef userAction/g) || []).length;
+		expect(count).toBe(1);
+	});
+
+	it('handles :::className inline syntax', () => {
+		const mermaid = 'flowchart TD\n  A([Start]):::userAction --> B[Process]:::process';
+		const result = ensureMermaidStyles(mermaid);
+		expect(result).toContain('classDef userAction fill:#E3F2FD');
+		expect(result).toContain('classDef process fill:#F3E5F5');
+	});
+
+	it('returns unchanged when all classDefs present', () => {
+		const mermaid = 'flowchart TD\n  A --> B\n  classDef userAction fill:#E3F2FD,stroke:#1565C0,color:#0D47A1\n  class A userAction';
+		expect(ensureMermaidStyles(mermaid)).toBe(mermaid);
+	});
+
+	it('ignores unknown class names', () => {
+		const mermaid = 'flowchart TD\n  A --> B\n  class A customStyle';
+		const result = ensureMermaidStyles(mermaid);
+		expect(result).not.toContain('classDef customStyle');
+		expect(result).toBe(mermaid);
+	});
+
+	it('returns unchanged when no class assignments exist', () => {
+		const mermaid = 'flowchart TD\n  A --> B';
+		expect(ensureMermaidStyles(mermaid)).toBe(mermaid);
 	});
 });
 
