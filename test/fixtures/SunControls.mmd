@@ -1,0 +1,95 @@
+%%{init: {'theme': 'neutral', 'themeVariables': {'fontSize': '13px', 'fontFamily': 'ui-monospace, monospace'}}}%%
+
+flowchart TD
+    subgraph UserActions[User Interactions]
+        pickDate([User picks a date])
+        dragSlider([User drags time slider])
+        clickMode([User clicks daily/yearly/monthly])
+        clickSpeed([User clicks 1x/2x/5x/10x])
+        clickPlay([User clicks play/pause])
+    end
+
+    subgraph DateFlow[Date Change Flow]
+        parseDate[Parse date string to Date object]
+        preserveTime[Set hours to current timeOfDay]
+        callDateChange[Call onDateChange with new Date]
+    end
+
+    subgraph TimeFlow[Time Change Flow]
+        parseFloat[Parse slider value as float]
+        callTimeChange[Call onTimeChange with hour value]
+    end
+
+    subgraph AnimationFlow[Animation Config Flow]
+        setMode[Call onAnimationModeChange]
+        setSpeed[Call onAnimationSpeedChange]
+        togglePlay[Call onTogglePlay]
+    end
+
+    subgraph ProgressCalc[Progress Bar Calculation]
+        checkMode{animationMode?}
+        dailyCalc[daily: timeOfDay - 5 / 14]
+        yearlyCalc[yearly/monthly: dayOfYear / 364]
+        clampProgress[Clamp 0-100%]
+    end
+
+    subgraph SunDisplay[Sun Info Display]
+        radToAlt[sunPosition.altitude radians to degrees]
+        radToAz[sunPosition.azimuth radians to degrees]
+        fmtSunrise[Format sunrise Date to HH:MM AM/PM]
+        fmtSunset[Format sunset Date to HH:MM AM/PM]
+    end
+
+    subgraph MonthlyLabel[Monthly Mode Label]
+        checkMonthly{monthly mode?}
+        showLabel[Show: month name + day + fixed time]
+        hideLabel[Hidden]
+    end
+
+    %% User action flows
+    pickDate --> parseDate --> preserveTime --> callDateChange
+    dragSlider --> parseFloat --> callTimeChange
+    clickMode --> setMode
+    clickSpeed --> setSpeed
+    clickPlay --> togglePlay
+
+    %% Progress bar logic
+    callDateChange -.-> checkMode
+    callTimeChange -.-> checkMode
+    checkMode -->|daily| dailyCalc --> clampProgress
+    checkMode -->|yearly or monthly| yearlyCalc --> clampProgress
+
+    %% Monthly label logic
+    setMode -.-> checkMonthly
+    checkMonthly -->|yes| showLabel
+    checkMonthly -->|no| hideLabel
+
+    %% Sun info is read-only display
+    radToAlt -.->|formatDeg| radToAlt
+    radToAz -.->|formatDeg| radToAz
+    fmtSunrise -.->|formatTime| fmtSunrise
+    fmtSunset -.->|formatTime| fmtSunset
+
+    %% All callbacks go up to parent
+    callDateChange -->|to parent| Parent([Parent Component])
+    callTimeChange -->|to parent| Parent
+    setMode -->|to parent| Parent
+    setSpeed -->|to parent| Parent
+    togglePlay -->|to parent| Parent
+
+    %% Subtle, muted styles — no eye damage
+    classDef userAction fill:#f0f4f8,stroke:#90a4ae,stroke-width:1.5px,color:#37474f
+    classDef process fill:#fff,stroke:#b0bec5,stroke-width:1px,color:#455a64
+    classDef callback fill:#e8f5e9,stroke:#a5d6a7,stroke-width:1px,color:#2e7d32
+    classDef decision fill:#f3e5f5,stroke:#ce93d8,stroke-width:1px,color:#6a1b9a
+    classDef display fill:#fff8e1,stroke:#ffe082,stroke-width:1px,color:#6d4c00
+    classDef parent fill:#fce4ec,stroke:#ef9a9a,stroke-width:1px,color:#b71c1c
+    classDef hidden fill:#fafafa,stroke:#e0e0e0,stroke-width:1px,color:#9e9e9e
+
+    class pickDate,dragSlider,clickMode,clickSpeed,clickPlay userAction
+    class parseDate,preserveTime,parseFloat,dailyCalc,yearlyCalc,clampProgress process
+    class callDateChange,callTimeChange,setMode,setSpeed,togglePlay callback
+    class checkMode,checkMonthly decision
+    class radToAlt,radToAz,fmtSunrise,fmtSunset,showLabel display
+    class Parent parent
+    class hideLabel hidden

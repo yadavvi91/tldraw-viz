@@ -44,6 +44,8 @@ export interface CodeNode {
 	color?: string;
 	/** Group this node belongs to */
 	groupId?: string;
+	/** Display label (overrides default "name()" text in diagram) */
+	label?: string;
 }
 
 /** A directed edge in the call graph */

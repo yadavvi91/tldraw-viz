@@ -439,4 +439,28 @@ describe('TldrWriter', () => {
 			expect(tldr.schema.sequences).toHaveProperty('com.tldraw.shape.frame');
 		});
 	});
+
+	describe('node labels', () => {
+		it('uses node.label as display text when set', () => {
+			const graph: CallGraph = {
+				fileName: 'test.tsx',
+				language: 'typescriptreact',
+				nodes: [
+					{ id: 'pickDate', name: 'pickDate', type: 'function', line: 0, label: 'User picks a date' },
+					{ id: 'parseDate', name: 'parseDate', type: 'function', line: 0 },
+				],
+				edges: [],
+			};
+			const tldr = generateTldr(graph);
+			const geos = tldr.records.filter(
+				(r) => r.typeName === 'shape' && r.type === 'geo',
+			) as Record<string, any>[];
+
+			const labeled = geos.find(g => g.id === 'shape:pickDate')!;
+			const unlabeled = geos.find(g => g.id === 'shape:parseDate')!;
+
+			expect(labeled.props.text).toBe('User picks a date');
+			expect(unlabeled.props.text).toBe('parseDate()');
+		});
+	});
 });

@@ -1,6 +1,7 @@
 import type Parser from 'web-tree-sitter';
 import type { LanguageConfig } from './languages';
 import type { CallGraph, CodeNode, CodeEdge, NodeGroup } from './types';
+import { analyzeBehavior } from './ReactBehaviorAnalyzer';
 
 /** Display-like function name patterns */
 const DISPLAY_PATTERNS = /^(format|render|show|display|print|log|toString|to[A-Z])/;
@@ -194,6 +195,12 @@ export function enhanceReact(
 	tree: Parser.Tree,
 	config: LanguageConfig,
 ): CallGraph {
+	// Try behavioral analysis first — produces mermaid-quality diagrams
+	if (analyzeBehavior(graph, tree, config)) {
+		return graph;
+	}
+
+	// Fallback: simple React analysis for components without callback props
 	const rootNode = tree.rootNode;
 
 	// 1. Detect the component function (exported, name starts with uppercase)

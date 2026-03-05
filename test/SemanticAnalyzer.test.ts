@@ -157,7 +157,7 @@ export function Controls({
 }
 `;
 
-	it('marks the component as entrypoint', async () => {
+	it('removes the component node and creates behavioral nodes', async () => {
 		const config = getLanguageConfig('typescriptreact')!;
 		const tree = await parseSource(reactSource, config);
 		const nodes = extractNodes(tree, config);
@@ -166,9 +166,12 @@ export function Controls({
 
 		analyze(graph, tree, config);
 
+		// Component node is removed by behavioral analyzer
 		const component = graph.nodes.find(n => n.name === 'Controls');
-		expect(component?.role).toBe('entrypoint');
-		expect(component?.shape).toBe('ellipse');
+		expect(component).toBeUndefined();
+
+		// Behavioral nodes are created instead
+		expect(graph.nodes.length).toBeGreaterThan(3);
 	});
 
 	it('creates synthetic Parent node from callback props', async () => {
@@ -212,7 +215,8 @@ export function Controls({
 		expect(graph.groups!.length).toBeGreaterThan(0);
 
 		const groupLabels = graph.groups!.map(g => g.label);
-		expect(groupLabels).toContain('Display');
+		// Behavioral analyzer creates User Interactions and Callback Flow groups
+		expect(groupLabels).toContain('User Interactions');
 	});
 
 	it('adds "to parent" edge labels for callback edges', async () => {
@@ -223,6 +227,10 @@ export function Controls({
 		const graph: CallGraph = { nodes, edges, fileName: 'test.tsx', language: 'typescriptreact' };
 
 		analyze(graph, tree, config);
+
+		// Behavioral analyzer creates parent node and callback → parent edges
+		const parent = graph.nodes.find(n => n.id === 'synthetic-parent');
+		expect(parent).toBeDefined();
 
 		const parentEdges = graph.edges.filter(e => e.to === 'synthetic-parent');
 		expect(parentEdges.length).toBeGreaterThan(0);

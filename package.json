@@ -2,7 +2,7 @@
   "name": "tldraw-viz",
   "displayName": "tldraw Code Visualizer",
   "description": "Auto-generate tldraw call graph diagrams from source code",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "publisher": "yadavvi91",
   "license": "MIT",
   "repository": {
@@ -35,6 +35,16 @@
       {
         "command": "tldraw-viz.generateFlows",
         "title": "Generate Flow Diagrams",
+        "category": "tldraw"
+      },
+      {
+        "command": "tldraw-viz.convertMermaid",
+        "title": "Convert Mermaid to tldraw",
+        "category": "tldraw"
+      },
+      {
+        "command": "tldraw-viz.copySummary",
+        "title": "Copy Summary for Claude",
         "category": "tldraw"
       }
     ],
@@ -79,7 +89,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "package": "npm run build:prod && vsce package",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "version:patch": "npm version patch --no-git-tag-version && npm run package",
+    "version:minor": "npm version minor --no-git-tag-version && npm run package"
   },
   "devDependencies": {
     "@types/node": "^18.19.0",

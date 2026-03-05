@@ -9,6 +9,9 @@ import { DEFAULT_CONFIG, parseConfig, shouldSkipFile, hasEnoughSubstance, type T
 import { traceFlow, type FileReader } from './FlowTracer';
 import { analyze } from './SemanticAnalyzer';
 import { getLanguageConfig } from './languages';
+import { parseMermaid } from './MermaidParser';
+import { mermaidToCallGraph } from './MermaidConverter';
+import { generateClaudePrompt } from './StructuralSummary';
 import type { CallGraph } from './types';
 import type Parser from 'web-tree-sitter';
 
@@ -360,7 +363,99 @@ async function generateFlows() {
 	);
 }
 
+async function convertMermaid() {
+	const editor = vscode.window.activeTextEditor;
+	if (!editor) {
+		vscode.window.showWarningMessage('No active file to convert.');
+		return;
+	}
+
+	const document = editor.document;
+	if (!document.fileName.endsWith('.mmd') && !document.fileName.endsWith('.mermaid')) {
+		vscode.window.showWarningMessage('Active file must be a .mmd or .mermaid file.');
+		return;
+	}
+
+	const content = document.getText();
+	const sd = getShadowDir();
+
+	const mermaidGraph = parseMermaid(content);
+	if (mermaidGraph.nodes.length === 0) {
+		vscode.window.showWarningMessage('No nodes found in mermaid diagram.');
+		return;
+	}
+
+	const fileName = vscode.workspace.asRelativePath(document.uri);
+	const callGraph = mermaidToCallGraph(mermaidGraph, fileName);
+	const layout = layoutCallGraph(callGraph);
+	const tldr = generateTldr(callGraph, {
+		sourceFile: fileName,
+		sourceHash: sd.computeHash(content),
+		type: 'file',
+	}, layout);
+	const tldrContent = serializeTldr(tldr);
+
+	// Write .tldr alongside the .mmd file
+	const tldrUri = vscode.Uri.file(document.fileName.replace(/\.mmd$|\.mermaid$/, '.tldr'));
+	await vscode.workspace.fs.writeFile(tldrUri, Buffer.from(tldrContent, 'utf-8'));
+
+	// Open with tldraw extension
+	try {
+		await vscode.commands.executeCommand(
+			'vscode.openWith',
+			tldrUri,
+			'tldraw.tldr',
+			vscode.ViewColumn.Beside,
+		);
+	} catch {
+		await vscode.commands.executeCommand(
+			'vscode.open',
+			tldrUri,
+			{ viewColumn: vscode.ViewColumn.Beside },
+		);
+	}
+
+	vscode.window.showInformationMessage(
+		`Converted mermaid → tldraw: ${callGraph.nodes.length} nodes, ${callGraph.edges.length} edges, ${callGraph.groups?.length || 0} groups`,
+	);
+}
+
+async function copySummary() {
+	const editor = vscode.window.activeTextEditor;
+	if (!editor) {
+		vscode.window.showWarningMessage('No active file.');
+		return;
+	}
+
+	const document = editor.document;
+	const content = document.getText();
+	const fileName = vscode.workspace.asRelativePath(document.uri);
+
+	const config = getLanguageConfig(document.languageId);
+	if (!config) {
+		vscode.window.showWarningMessage(
+			`Language "${document.languageId}" is not supported. Summary requires a supported source file.`,
+		);
+		return;
+	}
+
+	await initParser();
+	const tree = await parseSource(content, config);
+	const nodes = extractNodes(tree, config);
+	const edges = extractEdges(tree, config, nodes);
+	const graph: CallGraph = { nodes, edges, fileName, language: document.languageId };
+	analyze(graph, tree, config);
+
+	const prompt = generateClaudePrompt(graph, content, config);
+	await vscode.env.clipboard.writeText(prompt);
+
+	vscode.window.showInformationMessage(
+		'Summary copied! Paste into Claude and ask for a mermaid flowchart.',
+	);
+}
+
 let debounceTimer: ReturnType<typeof setTimeout> | undefined;
+let mermaidDebounceTimer: ReturnType<typeof setTimeout> | undefined;
 
 function setupFileWatcher(context: vscode.ExtensionContext): void {
 	const watcher = vscode.workspace.createFileSystemWatcher(
@@ -406,17 +501,61 @@ function setupFileWatcher(context: vscode.ExtensionContext): void {
 	context.subscriptions.push(watcher);
 }
 
+function setupMermaidWatcher(context: vscode.ExtensionContext): void {
+	const watcher = vscode.workspace.createFileSystemWatcher('**/*.{mmd,mermaid}');
+
+	watcher.onDidChange(async (uri) => {
+		// Auto-convert .mmd to .tldr on save
+		if (mermaidDebounceTimer) clearTimeout(mermaidDebounceTimer);
+		mermaidDebounceTimer = setTimeout(async () => {
+			try {
+				const doc = await vscode.workspace.openTextDocument(uri);
+				const content = doc.getText();
+				const fileName = vscode.workspace.asRelativePath(uri);
+
+				const mermaidGraph = parseMermaid(content);
+				if (mermaidGraph.nodes.length === 0) return;
+
+				const sd = getShadowDir();
+				const callGraph = mermaidToCallGraph(mermaidGraph, fileName);
+				const layout = layoutCallGraph(callGraph);
+				const tldr = generateTldr(callGraph, {
+					sourceFile: fileName,
+					sourceHash: sd.computeHash(content),
+					type: 'file',
+				}, layout);
+
+				const tldrUri = vscode.Uri.file(
+					uri.fsPath.replace(/\.mmd$|\.mermaid$/, '.tldr'),
+				);
+				await vscode.workspace.fs.writeFile(
+					tldrUri,
+					Buffer.from(serializeTldr(tldr), 'utf-8'),
+				);
+			} catch {
+				// Silently ignore errors during auto-regeneration
+			}
+		}, 500);
+	});
+
+	context.subscriptions.push(watcher);
+}
+
 export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(
 		vscode.commands.registerCommand('tldraw-viz.showDiagram', showDiagram),
 		vscode.commands.registerCommand('tldraw-viz.generateAll', generateAll),
 		vscode.commands.registerCommand('tldraw-viz.generateFlows', generateFlows),
+		vscode.commands.registerCommand('tldraw-viz.convertMermaid', convertMermaid),
+		vscode.commands.registerCommand('tldraw-viz.copySummary', copySummary),
 	);
 
 	setupFileWatcher(context);
+	setupMermaidWatcher(context);
 }
 
 export function deactivate() {
 	shadowDir = undefined;
 	if (debounceTimer) clearTimeout(debounceTimer);
+	if (mermaidDebounceTimer) clearTimeout(mermaidDebounceTimer);
 }

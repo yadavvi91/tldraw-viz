@@ -110,7 +110,7 @@ function makeGeoShape(
 		|| (node.role ? ROLE_COLOR_MAP[node.role] : undefined)
 		|| TYPE_COLOR_MAP[node.type]
 		|| 'black';
-	const text = node.parent ? `${node.parent}.${node.name}()` : `${node.name}()`;
+	const text = node.label || (node.parent ? `${node.parent}.${node.name}()` : `${node.name}()`);
 
 	return {
 		id: `shape:${node.id}`,
@@ -241,7 +241,7 @@ export function generateTldr(
 				sourceFile: meta?.sourceFile || graph.fileName,
 				sourceHash: meta?.sourceHash || '',
 				generatedAt: meta?.generatedAt || new Date().toISOString(),
-				generatorVersion: meta?.generatorVersion || '0.2.0',
+				generatorVersion: meta?.generatorVersion || '0.3.0',
 				type: meta?.type || 'file',
 			} satisfies TldrawVizMeta,
 		},
