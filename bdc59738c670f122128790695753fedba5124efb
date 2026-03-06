@@ -1,0 +1,23 @@
+package.json
+  b25e4051e0dec7f9 5
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.8",
+  "base_commit_sha": "bdc59738c670f122128790695753fedba5124efb",
+  "prompts": {
+    "b25e4051e0dec7f9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2dfdfe32-3c71-438c-aaa1-6b4403d015a6",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Vishal Yadav <yadavvi91@gmail.com>",
+      "messages": [],
+      "total_additions": 50,
+      "total_deletions": 25,
+      "accepted_lines": 1,
+      "overriden_lines": 1
+    }
+  }
+}
