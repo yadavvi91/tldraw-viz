@@ -1,0 +1,25 @@
+src/MermaidParser.ts
+  b25e4051e0dec7f9 184-191
+package.json
+  b25e4051e0dec7f9 5
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.8",
+  "base_commit_sha": "0541d88ee8e75145c55c291125a715757e607d4d",
+  "prompts": {
+    "b25e4051e0dec7f9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2dfdfe32-3c71-438c-aaa1-6b4403d015a6",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Vishal Yadav <yadavvi91@gmail.com>",
+      "messages": [],
+      "total_additions": 12,
+      "total_deletions": 5,
+      "accepted_lines": 9,
+      "overriden_lines": 0
+    }
+  }
+}
