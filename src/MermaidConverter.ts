@@ -78,11 +78,13 @@ export function mermaidToCallGraph(graph: MermaidGraph, fileName: string, nodeMa
 		// We want just "extractReactDetails" for source navigation.
 		const rawName = mapping?.name || mNode.label || mNode.id;
 		const funcName = rawName.split(/\s*[—–\-]\s*|\n/)[0].trim();
+		// Line number priority: explicit nodeMapping > NODE_MAP from mermaid comments > 0
+		const line = mapping?.line || graph.nodeLineMap?.[mNode.id] || 0;
 		nodes.push({
 			id: mNode.id,
 			name: funcName || rawName,
 			type: 'function',
-			line: mapping?.line || 0,
+			line,
 			role: ROLE_MAP[mNode.shape],
 			shape: SHAPE_MAP[mNode.shape],
 			color: COLOR_MAP[mNode.shape],

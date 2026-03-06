@@ -2,16 +2,13 @@ import React, { Component, useCallback, useEffect, useRef, useState } from 'reac
 import { createRoot } from 'react-dom/client';
 import { Tldraw, Box, type Editor, parseTldrawJsonFile, loadSnapshot, getSnapshot } from 'tldraw';
 import 'tldraw/tldraw.css';
-import type { ExtensionToWebview } from '../messages';
 import { vscode } from './vscode';
 
-/** Write to the #debug div (visible even if React crashes) */
 function debugLog(msg: string) {
 	const d = document.getElementById('debug');
 	if (d) {
 		d.style.display = 'block';
 		d.textContent = msg;
-		// Auto-hide after 10 seconds
 		setTimeout(() => { d.style.display = 'none'; }, 10_000);
 	}
 	console.log('[tldraw-viz]', msg);
@@ -22,11 +19,7 @@ class ErrorBoundary extends Component<
 	{ error: Error | null }
 > {
 	state = { error: null as Error | null };
-
-	static getDerivedStateFromError(error: Error) {
-		return { error };
-	}
-
+	static getDerivedStateFromError(error: Error) { return { error }; }
 	render() {
 		if (this.state.error) {
 			return (
@@ -41,103 +34,103 @@ class ErrorBoundary extends Component<
 	}
 }
 
+// Read file data embedded in HTML by the extension (no message passing needed)
+function getEmbeddedFileData(): string | null {
+	const el = document.getElementById('tldraw-data');
+	if (!el?.textContent) return null;
+	try {
+		return atob(el.textContent);
+	} catch {
+		return null;
+	}
+}
+
 function App() {
-	const [fileData, setFileData] = useState<{ fileContents: string; uri: string } | null>(null);
-	const [mountKey, setMountKey] = useState(0);
-	const recoveryCountRef = useRef(0);
+	const fileContents = useRef(getEmbeddedFileData());
 
-	const triggerRemount = useCallback(() => {
-		if (recoveryCountRef.current < 3) {
-			recoveryCountRef.current++;
-			debugLog(`Auto-recovery #${recoveryCountRef.current}: remounting tldraw`);
-			setMountKey(k => k + 1);
-		}
-	}, []);
-
-	useEffect(() => {
-		function handleMessage(event: MessageEvent<ExtensionToWebview>) {
-			const msg = event.data;
-			if (msg.type === 'opened-file') {
-				setFileData(msg.data);
-			} else if (msg.type === 'refresh') {
-				debugLog('Refresh: remounting tldraw');
-				recoveryCountRef.current = 0; // Reset recovery count on explicit refresh
-				setMountKey(k => k + 1);
-			}
-		}
-		window.addEventListener('message', handleMessage);
-		vscode.postMessage({ type: 'ready-to-receive-file' });
-		return () => window.removeEventListener('message', handleMessage);
-	}, []);
-
-	if (!fileData) {
-		return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#888' }}>Loading diagram...</div>;
+	if (!fileContents.current) {
+		return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#c00' }}>No diagram data found.</div>;
 	}
 
 	return (
 		<ErrorBoundary>
-			<TldrawEditor
-				key={mountKey}
-				fileContents={fileData.fileContents}
-				onRecoveryNeeded={triggerRemount}
-			/>
+			<TldrawEditor fileContents={fileContents.current} />
 		</ErrorBoundary>
 	);
 }
 
-/**
- * Force tldraw to recalculate viewport bounds.
- * In VS Code's nested iframe, getBoundingClientRect() can return zero/tiny
- * dimensions, causing tldraw's culling system to hide all shapes (display: none).
- *
- * This function tries the container first, then falls back to window dimensions
- * via a Box object (bypassing getBoundingClientRect entirely).
- */
-function forceViewportUpdate(ed: Editor, alsoZoomToFit = true): boolean {
-	try {
-		const container = ed.getContainer();
-		if (!container?.isConnected) return false;
+function TldrawEditor({ fileContents }: { fileContents: string }) {
+	const [containerReady, setContainerReady] = useState(false);
+	const containerRef = useRef<HTMLDivElement>(null);
+	const editorRef = useRef<Editor | null>(null);
 
-		const rect = container.getBoundingClientRect();
-		if (rect.width > 10 && rect.height > 10) {
-			// Container has proper dimensions — use it directly
-			ed.updateViewportScreenBounds(container);
-		} else {
-			// Container has bad dimensions — use window size as fallback
-			const w = window.innerWidth || document.documentElement.clientWidth || 800;
-			const h = window.innerHeight || document.documentElement.clientHeight || 600;
-			debugLog(`Viewport fix: container bad (${Math.round(rect.width)}x${Math.round(rect.height)}), using window ${w}x${h}`);
-			ed.updateViewportScreenBounds(new Box(0, 0, w, h));
-		}
+	// Wait for the container to have real dimensions before mounting tldraw.
+	useEffect(() => {
+		const el = containerRef.current;
+		if (!el) return;
 
-		if (alsoZoomToFit) {
-			ed.zoomToFit({ animation: { duration: 0 } });
-		}
-		return true;
-	} catch {
-		return false;
-	}
-}
+		const check = () => {
+			const rect = el.getBoundingClientRect();
+			if (rect.width > 10 && rect.height > 10) {
+				debugLog(`Container ready: ${Math.round(rect.width)}x${Math.round(rect.height)}`);
+				setContainerReady(true);
+				return true;
+			}
+			return false;
+		};
 
-/**
- * Check if shapes are loaded but all hidden by tldraw's culling system.
- * When viewport bounds are wrong (e.g., 1x1), tldraw culls all shapes
- * by setting display:none on .tl-shape elements.
- */
-function areAllShapesCulled(container: HTMLElement): boolean {
-	const shapeElements = container.querySelectorAll('.tl-shape');
-	if (shapeElements.length === 0) return false; // no DOM elements at all — different problem
-	return Array.from(shapeElements).every(
-		el => (el as HTMLElement).style.display === 'none'
-	);
-}
+		if (check()) return;
 
-function TldrawEditor({ fileContents, onRecoveryNeeded }: { fileContents: string; onRecoveryNeeded: () => void }) {
-	const [editor, setEditor] = useState<Editor | null>(null);
+		const observer = new ResizeObserver(() => {
+			if (check()) observer.disconnect();
+		});
+		observer.observe(el);
+
+		const interval = setInterval(() => {
+			if (check()) {
+				clearInterval(interval);
+				observer.disconnect();
+			}
+		}, 100);
+
+		return () => {
+			observer.disconnect();
+			clearInterval(interval);
+		};
+	}, []);
 
 	const handleMount = useCallback((ed: Editor) => {
 		try {
-			const sanitized = fileContents.replace(/"url"\s*:\s*"vscode:\/\/[^"]*"/g, '"url": ""');
+			// Sanitize: strip vscode:// URLs and remove broken zero-size frames
+			let data = JSON.parse(fileContents);
+			if (Array.isArray(data.records)) {
+				const brokenFrameIds = new Set<string>();
+				data.records = data.records.filter((r: Record<string, unknown>) => {
+					if (r.type === 'frame') {
+						const props = r.props as { w?: number; h?: number } | undefined;
+						if (!props?.w || !props?.h) {
+							brokenFrameIds.add(r.id as string);
+							return false;
+						}
+					}
+					// Strip vscode:// URLs
+					if (r.props && typeof (r.props as Record<string, unknown>).url === 'string') {
+						const url = (r.props as Record<string, string>).url;
+						if (url.startsWith('vscode://')) {
+							(r.props as Record<string, string>).url = '';
+						}
+					}
+					return true;
+				});
+				// Remove any shapes parented to broken frames
+				if (brokenFrameIds.size > 0) {
+					data.records = data.records.filter((r: Record<string, unknown>) =>
+						!brokenFrameIds.has(r.parentId as string)
+					);
+					debugLog(`Removed ${brokenFrameIds.size} broken frame(s)`);
+				}
+			}
+			const sanitized = JSON.stringify(data);
 			const parseResult = parseTldrawJsonFile({
 				json: sanitized,
 				schema: ed.store.schema,
@@ -146,6 +139,7 @@ function TldrawEditor({ fileContents, onRecoveryNeeded }: { fileContents: string
 				const parsed = parseResult.value;
 				const snapshot = getSnapshot(parsed);
 				loadSnapshot(ed.store, { document: snapshot.document });
+				debugLog(`Loaded ${ed.getCurrentPageShapeIds().size} shapes`);
 			} else {
 				console.error('[tldraw-viz] Parse failed:', parseResult.error);
 			}
@@ -155,43 +149,48 @@ function TldrawEditor({ fileContents, onRecoveryNeeded }: { fileContents: string
 
 		ed.updateInstanceState({ isReadonly: true });
 
-		// Ensure we're on the correct page
 		const pages = ed.getPages();
 		if (pages.length > 0) {
 			ed.setCurrentPage(pages[0].id);
 		}
 
-		ed.zoomToFit({ animation: { duration: 0 } });
-		setEditor(ed);
-	}, [fileContents]);
+		// Force viewport + zoomToFit at escalating delays.
+		// tldraw in VS Code's iframe often needs time to settle before
+		// it can properly calculate viewport bounds and render shapes.
+		const fixViewport = () => {
+			try {
+				const container = ed.getContainer();
+				if (container?.isConnected) {
+					const rect = container.getBoundingClientRect();
+					if (rect.width > 10 && rect.height > 10) {
+						ed.updateViewportScreenBounds(container);
+					} else {
+						const w = window.innerWidth || 800;
+						const h = window.innerHeight || 600;
+						ed.updateViewportScreenBounds(new Box(0, 0, w, h));
+					}
+				}
+				ed.zoomToFit({ animation: { duration: 0 } });
+			} catch { /* ignore */ }
+		};
 
-	// Fix viewport when tab becomes visible (VS Code may have zeroed dimensions while hidden)
-	useEffect(() => {
-		if (!editor) return;
+		// Try immediately, then retry at escalating delays
+		requestAnimationFrame(fixViewport);
+		setTimeout(fixViewport, 100);
+		setTimeout(fixViewport, 500);
+		setTimeout(fixViewport, 1500);
 
-		function handleVisibility() {
-			if (!document.hidden) {
-				// Small delay to let VS Code finish layout before measuring
-				setTimeout(() => forceViewportUpdate(editor!), 200);
-			}
-		}
+		editorRef.current = ed;
 
-		document.addEventListener('visibilitychange', handleVisibility);
-		return () => document.removeEventListener('visibilitychange', handleVisibility);
-	}, [editor]);
-
-	// Selection listener — properly cleaned up on unmount
-	useEffect(() => {
-		if (!editor) return;
-
+		// Click-to-navigate: listen for shape selection changes
 		let lastSelectedId: string | null = null;
 		let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
-		const unsub = editor.store.listen(
+		ed.store.listen(
 			() => {
 				if (debounceTimer) clearTimeout(debounceTimer);
 				debounceTimer = setTimeout(() => {
-					const selectedIds = editor.getSelectedShapeIds();
+					const selectedIds = ed.getSelectedShapeIds();
 					if (selectedIds.length !== 1) {
 						lastSelectedId = null;
 						return;
@@ -201,7 +200,7 @@ function TldrawEditor({ fileContents, onRecoveryNeeded }: { fileContents: string
 					if (shapeId === lastSelectedId) return;
 					lastSelectedId = shapeId;
 
-					const shape = editor.getShape(shapeId);
+					const shape = ed.getShape(shapeId);
 					if (!shape || shape.type !== 'geo') return;
 
 					const meta = shape.meta as {
@@ -211,7 +210,7 @@ function TldrawEditor({ fileContents, onRecoveryNeeded }: { fileContents: string
 					} | undefined;
 					if (!meta) return;
 
-					const docMeta = (editor.getDocumentSettings().meta as {
+					const docMeta = (ed.getDocumentSettings().meta as {
 						tldrawViz?: { sourceFile?: string };
 					} | undefined);
 					const file = meta.sourceFile || docMeta?.tldrawViz?.sourceFile || '';
@@ -229,112 +228,32 @@ function TldrawEditor({ fileContents, onRecoveryNeeded }: { fileContents: string
 			{ scope: 'session' },
 		);
 
-		return () => {
-			unsub();
-			if (debounceTimer) clearTimeout(debounceTimer);
-		};
-	}, [editor]);
-
-	// Post-mount visibility check: ensure shapes are visible after tldraw initializes.
-	// tldraw's initial updateViewportScreenBounds may use bad getBoundingClientRect() values,
-	// resulting in a 1x1 viewport that culls all shapes. We check at escalating intervals
-	// and fix if needed, starting after tldraw's _willSetInitialBounds has been consumed.
-	useEffect(() => {
-		if (!editor) return;
-
-		let cancelled = false;
-
-		const ensureVisible = () => {
-			if (cancelled) return;
-			const shapeCount = editor.getCurrentPageShapeIds().size;
-			if (shapeCount === 0) return; // empty diagram is valid
-
-			const container = editor.getContainer();
-			if (!container?.isConnected) return;
-
-			const shapeElements = container.querySelectorAll('.tl-shape');
-			const noShapesInDom = shapeElements.length === 0;
-			const allCulled = !noShapesInDom && areAllShapesCulled(container);
-
-			if (noShapesInDom || allCulled) {
-				debugLog(`Post-mount fix: ${shapeCount} shapes, ${shapeElements.length} in DOM, allCulled=${allCulled}`);
-				forceViewportUpdate(editor);
+		// Fix viewport when tab becomes visible again
+		function handleVisibility() {
+			if (!document.hidden) {
+				setTimeout(() => {
+					try {
+						const container = ed.getContainer();
+						if (container?.isConnected) {
+							ed.updateViewportScreenBounds(container);
+							ed.zoomToFit({ animation: { duration: 0 } });
+						}
+					} catch { /* editor may be disposed */ }
+				}, 200);
 			}
-		};
-
-		// Check at escalating intervals (after tldraw's initial setup completes)
-		const timers = [
-			setTimeout(ensureVisible, 300),
-			setTimeout(ensureVisible, 700),
-			setTimeout(ensureVisible, 1500),
-			setTimeout(ensureVisible, 3000),
-		];
-
-		return () => {
-			cancelled = true;
-			timers.forEach(clearTimeout);
-		};
-	}, [editor]);
-
-	// Ongoing health check: detect blank canvas from viewport corruption.
-	// Catches both: (a) shapes not in DOM at all, (b) shapes in DOM but all culled.
-	useEffect(() => {
-		if (!editor) return;
-
-		let failCount = 0;
-
-		const interval = setInterval(() => {
-			try {
-				const shapeCount = editor.getCurrentPageShapeIds().size;
-				if (shapeCount === 0) {
-					failCount = 0;
-					return;
-				}
-
-				const container = editor.getContainer();
-				if (!container?.isConnected) {
-					failCount++;
-					if (failCount >= 3) {
-						failCount = 0;
-						onRecoveryNeeded();
-					}
-					return;
-				}
-
-				const shapeElements = container.querySelectorAll('.tl-shape');
-				const noShapesInDom = shapeElements.length === 0;
-				const allCulled = !noShapesInDom && areAllShapesCulled(container);
-
-				if (noShapesInDom || allCulled) {
-					failCount++;
-					debugLog(`Health: ${shapeCount} shapes, ${shapeElements.length} in DOM, allCulled=${allCulled} (${failCount}/5)`);
-
-					// Try viewport fix first
-					const fixed = forceViewportUpdate(editor);
-
-					if (!fixed && failCount >= 5) {
-						debugLog('Health: viewport fix exhausted — remounting');
-						failCount = 0;
-						onRecoveryNeeded();
-					}
-				} else {
-					failCount = 0;
-				}
-			} catch {
-				failCount++;
-				if (failCount >= 3) {
-					failCount = 0;
-					onRecoveryNeeded();
-				}
-			}
-		}, 2000);
-
-		return () => clearInterval(interval);
-	}, [editor, onRecoveryNeeded]);
+		}
+		document.addEventListener('visibilitychange', handleVisibility);
+	}, [fileContents]);
 
 	return (
-		<div style={{ position: 'absolute', inset: 0 }}>
-			<Tldraw onMount={handleMount} autoFocus={false} />
+		<div ref={containerRef} style={{ position: 'absolute', inset: 0 }}>
+			{containerReady ? (
+				<Tldraw onMount={handleMount} autoFocus={false} />
+			) : (
+				<div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#888' }}>
+					Waiting for layout...
+				</div>
+			)}
 		</div>
 	);
 }

@@ -1,5 +1,7 @@
 import * as vscode from 'vscode';
-import type { ExtensionToWebview, WebviewToExtension } from './messages';
+import type { WebviewToExtension } from './messages';
+
+const navLog = vscode.window.createOutputChannel('tldraw-viz-nav', { log: true });
 
 /**
  * Navigate to a source file at a given line.
@@ -14,12 +16,17 @@ async function navigateToSource(
 	const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri;
 	if (!workspaceRoot || !file) return;
 
+	navLog.info(`navigateToSource: file="${file}", line=${line}, name="${name}"`);
+
 	const freshLookup = vscode.workspace.getConfiguration('tldraw-viz')
 		.get<boolean>('freshLineLookup', true);
 
 	let resolvedLine = line;
 	if (freshLookup && name) {
 		resolvedLine = await findCurrentLine(workspaceRoot, file, name, line);
+		navLog.info(`navigateToSource: findCurrentLine resolved ${line} → ${resolvedLine}`);
+	} else {
+		navLog.info(`navigateToSource: freshLookup=${freshLookup}, name="${name}" — skipping findCurrentLine`);
 	}
 
 	const fileUri = vscode.Uri.joinPath(workspaceRoot, file);
@@ -102,56 +109,35 @@ export class TldrawEditorProvider implements vscode.CustomReadonlyEditorProvider
 				vscode.Uri.joinPath(this.context.extensionUri, 'dist'),
 			],
 		};
-		const html = this.getHtml(webviewPanel.webview);
+		const html = this.getHtml(webviewPanel.webview, document.fileContents);
 		console.log('[tldraw-viz] Setting webview HTML, length:', html.length);
 		webviewPanel.webview.html = html;
 
-		// Only refresh when transitioning from hidden → visible (not on every state change)
-		let wasVisible = webviewPanel.visible;
-		webviewPanel.onDidChangeViewState(() => {
-			const isVisible = webviewPanel.visible;
-			if (isVisible && !wasVisible) {
-				webviewPanel.webview.postMessage({ type: 'refresh' });
-			}
-			wasVisible = isVisible;
-		});
-
 		webviewPanel.webview.onDidReceiveMessage(
 			async (msg: WebviewToExtension) => {
-				switch (msg.type) {
-					case 'ready-to-receive-file': {
-						const message: ExtensionToWebview = {
-							type: 'opened-file',
-							data: {
-								fileContents: document.fileContents,
-								uri: document.uri.toString(),
-							},
-						};
-						webviewPanel.webview.postMessage(message);
-						break;
-					}
-					case 'shapeClicked': {
-						console.log('[tldraw-viz] shapeClicked received:', JSON.stringify(msg.data));
-						await navigateToSource(
-							msg.data.file,
-							msg.data.line,
-							msg.data.name,
-							this.findCurrentLine,
-						);
-						break;
-					}
+				if (msg.type === 'shapeClicked') {
+					console.log('[tldraw-viz] shapeClicked received:', JSON.stringify(msg.data));
+					await navigateToSource(
+						msg.data.file,
+						msg.data.line,
+						msg.data.name,
+						this.findCurrentLine,
+					);
 				}
 			},
 		);
 	}
 
-	private getHtml(webview: vscode.Webview): string {
+	private getHtml(webview: vscode.Webview, fileContents: string): string {
 		const scriptUri = webview.asWebviewUri(
 			vscode.Uri.joinPath(this.context.extensionUri, 'dist', 'webview.js'),
 		);
 		const cssUri = webview.asWebviewUri(
 			vscode.Uri.joinPath(this.context.extensionUri, 'dist', 'webview.css'),
 		);
+
+		// Embed file data directly in HTML via base64 to avoid message-passing races
+		const b64 = Buffer.from(fileContents, 'utf-8').toString('base64');
 
 		return `<!DOCTYPE html>
 <html lang="en">
@@ -168,6 +154,7 @@ export class TldrawEditorProvider implements vscode.CustomReadonlyEditorProvider
 <body>
 	<div id="debug"></div>
 	<div id="root">Initializing tldraw viewer...</div>
+	<script id="tldraw-data" type="application/json">${b64}</script>
 	<script>
 		window.onerror = function(msg, src, line, col, err) {
 			if (typeof msg === 'string' && msg.indexOf('ResizeObserver') !== -1) return true;

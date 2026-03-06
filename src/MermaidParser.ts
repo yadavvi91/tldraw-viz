@@ -41,6 +41,8 @@ export interface MermaidGraph {
 	nodes: MermaidNode[];
 	edges: MermaidEdge[];
 	subgraphs: MermaidSubgraph[];
+	/** Node-to-line mappings extracted from %% NODE_MAP comments */
+	nodeLineMap: Record<string, number>;
 }
 
 /**
@@ -172,6 +174,7 @@ export function parseMermaid(source: string): MermaidGraph {
 	const nodeMap = new Map<string, MermaidNode>();
 	const edges: MermaidEdge[] = [];
 	const subgraphs: MermaidSubgraph[] = [];
+	const nodeLineMap: Record<string, number> = {};
 
 	// Subgraph stack: each entry tracks current subgraph being built
 	const subgraphStack: MermaidSubgraph[] = [];
@@ -186,8 +189,15 @@ export function parseMermaid(source: string): MermaidGraph {
 		// Skip empty lines
 		if (!line) continue;
 
-		// Skip comments
-		if (line.startsWith('%%')) continue;
+		// Extract NODE_MAP entries from %% comments before skipping
+		if (line.startsWith('%%')) {
+			// %% NODE_MAP: nodeId -> 42
+			const mapMatch = line.match(/^%%\s*NODE_MAP:\s*(\S+)\s*->\s*(\d+)/);
+			if (mapMatch) {
+				nodeLineMap[mapMatch[1]] = parseInt(mapMatch[2], 10);
+			}
+			continue;
+		}
 
 		// Skip classDef and class lines
 		if (line.startsWith('classDef ') || line.startsWith('class ')) continue;
@@ -212,7 +222,8 @@ export function parseMermaid(source: string): MermaidGraph {
 		const subgraphMatch = line.match(/^subgraph\s+(\S+?)(?:\[(.+?)\])?\s*$/);
 		if (subgraphMatch) {
 			const sgId = subgraphMatch[1];
-			const sgLabel = subgraphMatch[2] || sgId;
+			let sgLabel = subgraphMatch[2] || sgId;
+			sgLabel = sgLabel.replace(/^["']|["']$/g, '');
 			subgraphStack.push({ id: sgId, label: sgLabel, nodeIds: [] });
 			continue;
 		}
@@ -232,7 +243,14 @@ export function parseMermaid(source: string): MermaidGraph {
 		}
 
 		// Try to parse as standalone node definition
-		tryParseNodeDef(line, nodeMap, subgraphStack);
+		if (tryParseNodeDef(line, nodeMap, subgraphStack)) {
+			continue;
+		}
+
+		// Bare node ID reference inside a subgraph (e.g. just "B" on its own line)
+		if (subgraphStack.length > 0 && /^[\w-]+$/.test(line)) {
+			addToCurrentSubgraph(line, subgraphStack);
+		}
 	}
 
 	return {
@@ -240,6 +258,7 @@ export function parseMermaid(source: string): MermaidGraph {
 		nodes: Array.from(nodeMap.values()),
 		edges,
 		subgraphs,
+		nodeLineMap,
 	};
 }
 

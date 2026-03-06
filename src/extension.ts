@@ -24,6 +24,7 @@ import type Parser from 'web-tree-sitter';
 let shadowDir: ShadowDirectory | undefined;
 let claudeService: ClaudeService | undefined;
 let statusBarItem: vscode.StatusBarItem | undefined;
+const log = vscode.window.createOutputChannel('tldraw-viz', { log: true });
 
 async function loadTldrawConfig(workspaceRoot: vscode.Uri): Promise<TldrawConfig> {
 	const configUri = vscode.Uri.joinPath(workspaceRoot, '.tldraw', 'tldraw.config.json');
@@ -380,6 +381,86 @@ async function generateFlows() {
 	);
 }
 
+/**
+ * Fallback line resolution for nodes without NODE_MAP entries.
+ * Tries AST matching, then prefix inheritance, then group inheritance.
+ * This is only needed for old mermaid files generated before NODE_MAP was added.
+ */
+async function resolveSourceLines(callGraph: CallGraph, sourceFile: string): Promise<void> {
+	// If all nodes already have lines (from NODE_MAP), nothing to do
+	const unresolved = callGraph.nodes.filter(n => n.line === 0);
+	if (unresolved.length === 0) {
+		log.info(`resolveSourceLines: all ${callGraph.nodes.length} nodes already have lines from NODE_MAP`);
+		return;
+	}
+
+	const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri;
+	if (!workspaceRoot) return;
+
+	try {
+		const fileUri = vscode.Uri.joinPath(workspaceRoot, sourceFile);
+		log.info(`resolveSourceLines: ${unresolved.length}/${callGraph.nodes.length} nodes need resolution for "${sourceFile}"`);
+		const doc = await vscode.workspace.openTextDocument(fileUri);
+		const ext = path.extname(sourceFile);
+		const langKey = extensionToLanguage(ext);
+		if (!langKey) return;
+
+		const config = getLanguageConfig(langKey);
+		if (!config) return;
+
+		await initParser();
+		const tree = await parseSource(doc.getText(), config);
+		const astNodes = extractNodes(tree, config);
+		const astLineMap = new Map(astNodes.map(n => [n.name, n.line]));
+
+		// Pass 1: direct AST match on node name/id
+		for (const node of callGraph.nodes) {
+			if (node.line === 0) {
+				node.line = astLineMap.get(node.name) || astLineMap.get(node.id) || 0;
+			}
+		}
+
+		// Pass 2: sub-step nodes inherit parent line (e.g., "func_step" → "func")
+		const resolved = new Map(
+			callGraph.nodes.filter(n => n.line > 0).map(n => [n.id, n.line]),
+		);
+		for (const node of callGraph.nodes) {
+			if (node.line === 0) {
+				for (const [funcId, funcLine] of resolved) {
+					if (node.id.startsWith(funcId + '_') || node.id.startsWith(funcId + '-')) {
+						node.line = funcLine;
+						break;
+					}
+				}
+			}
+		}
+
+		// Pass 3: group siblings inherit from resolved members
+		if (callGraph.groups) {
+			for (const group of callGraph.groups) {
+				const groupLine = group.nodeIds
+					.map(id => callGraph.nodes.find(n => n.id === id))
+					.find(n => n && n.line > 0)?.line;
+				if (groupLine) {
+					for (const nodeId of group.nodeIds) {
+						const node = callGraph.nodes.find(n => n.id === nodeId);
+						if (node && node.line === 0) node.line = groupLine;
+					}
+				}
+			}
+		}
+
+		const remaining = callGraph.nodes.filter(n => n.line === 0);
+		if (remaining.length > 0) {
+			log.warn(`resolveSourceLines: ${remaining.length} nodes still at line 0`);
+		} else {
+			log.info(`resolveSourceLines: all nodes resolved`);
+		}
+	} catch (err) {
+		log.error(`resolveSourceLines failed for "${sourceFile}": ${err}`);
+	}
+}
+
 async function convertMermaid() {
 	const editor = vscode.window.activeTextEditor;
 	if (!editor) {
@@ -403,10 +484,18 @@ async function convertMermaid() {
 	}
 
 	const fileName = vscode.workspace.asRelativePath(document.uri);
-	const callGraph = mermaidToCallGraph(mermaidGraph, fileName);
+	// Derive source file: .mermaid/path/to/file.ts.overview.mmd → path/to/file.ts
+	const sourceFile = fileName
+		.replace(new RegExp(`^${sd.getMermaidDir().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/`), '')
+		.replace(/\.(overview|detail)(-\d+)?\.mmd$/, '');
+	const callGraph = mermaidToCallGraph(mermaidGraph, sourceFile);
+
+	// Resolve line numbers from AST-parsed source file
+	await resolveSourceLines(callGraph, sourceFile);
+
 	const layout = layoutCallGraph(callGraph);
 	const tldr = generateTldr(callGraph, {
-		sourceFile: fileName,
+		sourceFile: sourceFile,
 		sourceHash: sd.computeHash(content),
 		type: 'file',
 	}, layout);
@@ -928,6 +1017,9 @@ async function findCurrentLine(
 	functionName: string,
 	fallbackLine: number,
 ): Promise<number> {
+	// If we already have a good line from NODE_MAP, just use it
+	if (fallbackLine > 0) return fallbackLine;
+
 	try {
 		const fileUri = vscode.Uri.joinPath(workspaceRoot, file);
 		const doc = await vscode.workspace.openTextDocument(fileUri);
@@ -941,9 +1033,33 @@ async function findCurrentLine(
 		await initParser();
 		const tree = await parseSource(doc.getText(), config);
 		const nodes = extractNodes(tree, config);
-		const match = nodes.find(n => n.name === functionName);
-		return match?.line || fallbackLine;
-	} catch {
+
+		// Clean the name
+		const cleaned = functionName
+			.replace(/^["'/]+|["'/]+$/g, '')
+			.replace(/\\n/g, ' ')
+			.trim();
+
+		// Try exact AST match
+		const exact = nodes.find(n => n.name === functionName) || nodes.find(n => n.name === cleaned);
+		if (exact) {
+			log.info(`findCurrentLine: AST match "${exact.name}" → line ${exact.line}`);
+			return exact.line;
+		}
+
+		// Try AST keyword match (function name appears in the label)
+		for (const n of [...nodes].sort((a, b) => b.name.length - a.name.length)) {
+			if (n.name.length < 3) continue;
+			const re = new RegExp(`\\b${n.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+			if (re.test(cleaned)) {
+				log.info(`findCurrentLine: AST keyword "${n.name}" → line ${n.line}`);
+				return n.line;
+			}
+		}
+
+		return fallbackLine;
+	} catch (err) {
+		log.error(`findCurrentLine failed: ${err}`);
 		return fallbackLine;
 	}
 }
@@ -1005,16 +1121,25 @@ function setupMermaidWatcher(context: vscode.ExtensionContext): void {
 			try {
 				const doc = await vscode.workspace.openTextDocument(uri);
 				const content = doc.getText();
-				const fileName = vscode.workspace.asRelativePath(uri);
+				const mmdRelPath = vscode.workspace.asRelativePath(uri);
 
 				const mermaidGraph = parseMermaid(content);
 				if (mermaidGraph.nodes.length === 0) return;
 
 				const sd = getShadowDir();
-				const callGraph = mermaidToCallGraph(mermaidGraph, fileName);
+				// Derive source file from .mmd path:
+				// .mermaid/path/to/file.ts.overview.mmd → path/to/file.ts
+				const sourceFile = mmdRelPath
+					.replace(new RegExp(`^${sd.getMermaidDir().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/`), '')
+					.replace(/\.(overview|detail)(-\d+)?\.mmd$/, '');
+				const callGraph = mermaidToCallGraph(mermaidGraph, sourceFile);
+
+				// Resolve line numbers from AST-parsed source file
+				await resolveSourceLines(callGraph, sourceFile);
+
 				const layout = layoutCallGraph(callGraph);
 				const tldr = generateTldr(callGraph, {
-					sourceFile: fileName,
+					sourceFile,
 					sourceHash: sd.computeHash(content),
 					type: 'file',
 				}, layout);
