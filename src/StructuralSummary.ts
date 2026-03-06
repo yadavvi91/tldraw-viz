@@ -209,9 +209,11 @@ function getMermaidStyleInstructions(): string[] {
 		'',
 		'Rules:',
 		'- Every node MUST have a NODE_MAP entry',
-		'- The line number must be the actual source line where the code for that node lives',
-		'- For sub-steps within a function, use the line of the enclosing function',
+		'- NEVER use 0 as a line number — every entry must have a real, non-zero line from the source code above',
+		'- Look up each node in the numbered source code and use the EXACT line number where that logic lives',
+		'- For sub-steps within a function, find the specific line in the source (e.g. the filter call, the map call, the return statement)',
 		'- For props/callbacks, use the line where they are declared or destructured',
+		'- If a node represents a concept that spans multiple lines, use the line where it STARTS',
 		'- This is critical — it enables click-to-navigate from diagram shapes to source code',
 		'',
 		'## Shape conventions',
@@ -251,6 +253,17 @@ export function generateOverviewPrompt(
 	lines.push('');
 	lines.push(summary);
 
+	lines.push('');
+	lines.push('## Source code (with line numbers)');
+	lines.push('Use these line numbers for NODE_MAP entries.');
+	lines.push('');
+	lines.push('```');
+	const sourceLines = sourceContent.split('\n');
+	for (let i = 0; i < sourceLines.length; i++) {
+		lines.push(`${i + 1}: ${sourceLines[i]}`);
+	}
+	lines.push('```');
+
 	lines.push(...getMermaidStyleInstructions());
 
 	lines.push('');
@@ -287,6 +300,17 @@ export function generateDetailPrompt(
 	lines.push('## Source analysis');
 	lines.push('');
 	lines.push(summary);
+
+	lines.push('');
+	lines.push('## Source code (with line numbers)');
+	lines.push('Use these line numbers for NODE_MAP entries.');
+	lines.push('');
+	lines.push('```');
+	const sourceLines = sourceContent.split('\n');
+	for (let i = 0; i < sourceLines.length; i++) {
+		lines.push(`${i + 1}: ${sourceLines[i]}`);
+	}
+	lines.push('```');
 
 	lines.push(...getMermaidStyleInstructions());
 
