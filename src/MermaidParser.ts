@@ -181,7 +181,14 @@ export function parseMermaid(source: string): MermaidGraph {
 
 	let direction: MermaidDirection = 'TD';
 
-	const lines = source.split('\n');
+	// Strip markdown code fences (```mermaid ... ```) that Claude often wraps output in
+	let cleaned = source.trim();
+	if (cleaned.startsWith('```')) {
+		cleaned = cleaned.replace(/^```(?:mermaid)?\s*\n/, '');
+		cleaned = cleaned.replace(/\n```\s*$/, '');
+	}
+
+	const lines = cleaned.split('\n');
 
 	for (const rawLine of lines) {
 		const line = rawLine.trim();
