@@ -686,16 +686,23 @@ async function generateDiagram(
 		async () => {
 			const result = await claudeService!.generateMermaid(prompt);
 
+			// Strip markdown code fences from Claude's response
+			let mermaidCode = result.mermaidCode.trim();
+			if (mermaidCode.startsWith('```')) {
+				mermaidCode = mermaidCode.replace(/^```(?:mermaid)?\s*\n/, '');
+				mermaidCode = mermaidCode.replace(/\n```\s*$/, '');
+			}
+
 			const sd = getShadowDir();
 
-			// Write mermaid to .mmd file
+			// Write mermaid to .mmd file (clean, without code fences)
 			const mmdUri = promptType === 'overview'
 				? sd.getMermaidOverviewUri(sourceUri)
 				: sd.getMermaidDetailUri(sourceUri);
-			await vscode.workspace.fs.writeFile(mmdUri, Buffer.from(result.mermaidCode, 'utf-8'));
+			await vscode.workspace.fs.writeFile(mmdUri, Buffer.from(mermaidCode, 'utf-8'));
 
 			// Convert to .tldr directly
-			const mermaidGraph = parseMermaid(result.mermaidCode);
+			const mermaidGraph = parseMermaid(mermaidCode);
 			const callGraph = mermaidToCallGraph(mermaidGraph, fileName);
 
 			// Resolve lines from AST-parsed call graph for Claude-generated nodes
@@ -709,7 +716,7 @@ async function generateDiagram(
 			const layout = layoutCallGraph(callGraph);
 			const tldr = generateTldr(callGraph, {
 				sourceFile: fileName,
-				sourceHash: sd.computeHash(result.mermaidCode),
+				sourceHash: sd.computeHash(mermaidCode),
 				type: 'file',
 			}, layout);
 			const tldrUri = vscode.Uri.file(mmdUri.fsPath.replace(/\.mmd$/, '.tldr'));
@@ -815,17 +822,24 @@ async function generateProjectArchitecture(
 			const prompt = generateProjectPrompt(projectGraph);
 			const result = await claudeService!.generateMermaid(prompt, 8192);
 
+			// Strip markdown code fences from Claude's response
+			let mermaidCode = result.mermaidCode.trim();
+			if (mermaidCode.startsWith('```')) {
+				mermaidCode = mermaidCode.replace(/^```(?:mermaid)?\s*\n/, '');
+				mermaidCode = mermaidCode.replace(/\n```\s*$/, '');
+			}
+
 			const sd = getShadowDir();
 			const mmdUri = sd.getProjectMermaidUri();
-			await vscode.workspace.fs.writeFile(mmdUri, Buffer.from(result.mermaidCode, 'utf-8'));
+			await vscode.workspace.fs.writeFile(mmdUri, Buffer.from(mermaidCode, 'utf-8'));
 
 			const nodeMapping = parseNodeMap(result.rawText);
-			const mermaidGraph = parseMermaid(result.mermaidCode);
+			const mermaidGraph = parseMermaid(mermaidCode);
 			const callGraph = mermaidToCallGraph(mermaidGraph, 'project-architecture', nodeMapping);
 			const layout = layoutCallGraph(callGraph);
 			const tldr = generateTldr(callGraph, {
 				sourceFile: 'project-architecture',
-				sourceHash: sd.computeHash(result.mermaidCode),
+				sourceHash: sd.computeHash(mermaidCode),
 				type: 'project',
 			}, layout);
 			const tldrUri = sd.getProjectUri();
@@ -965,17 +979,24 @@ async function generateFlowWithClaude(
 			const prompt = generateFlowPrompt(flowGraph);
 			const result = await claudeService!.generateMermaid(prompt, 8192);
 
+			// Strip markdown code fences from Claude's response
+			let mermaidCode = result.mermaidCode.trim();
+			if (mermaidCode.startsWith('```')) {
+				mermaidCode = mermaidCode.replace(/^```(?:mermaid)?\s*\n/, '');
+				mermaidCode = mermaidCode.replace(/\n```\s*$/, '');
+			}
+
 			// Write .mmd to .mermaid/flows/
 			const mmdUri = sd.getFlowMermaidUri(selectedFlow.name);
-			await vscode.workspace.fs.writeFile(mmdUri, Buffer.from(result.mermaidCode, 'utf-8'));
+			await vscode.workspace.fs.writeFile(mmdUri, Buffer.from(mermaidCode, 'utf-8'));
 
 			// Convert mermaid → CallGraph → layout → .tldr
-			const mermaidGraph = parseMermaid(result.mermaidCode);
+			const mermaidGraph = parseMermaid(mermaidCode);
 			const callGraph = mermaidToCallGraph(mermaidGraph, selectedFlow.name);
 			const layout = layoutCallGraph(callGraph);
 			const tldr = generateTldr(callGraph, {
 				sourceFile: selectedFlow.entrypoint,
-				sourceHash: sd.computeHash(result.mermaidCode),
+				sourceHash: sd.computeHash(mermaidCode),
 				type: 'flow',
 			}, layout);
 
