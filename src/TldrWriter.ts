@@ -147,6 +147,8 @@ function makeGeoShape(
 			sourceLine: node.line,
 			sourceType: node.type,
 			sourceName: node.name,
+			...(node.startByte != null ? { sourceStartByte: node.startByte } : {}),
+			...(node.endByte != null ? { sourceEndByte: node.endByte } : {}),
 			...(node.sourceFile ? { sourceFile: node.sourceFile } : {}),
 			...(node.role ? { role: node.role } : {}),
 		},

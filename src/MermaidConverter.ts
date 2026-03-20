@@ -1,5 +1,7 @@
 import type { MermaidGraph, MermaidShape, MermaidEdgeStyle } from './MermaidParser';
 import type { CallGraph, CodeNode, CodeEdge, NodeGroup, NodeRole, NodeShape, EdgeStyle } from './types';
+import type { SymbolTable } from './SymbolTable';
+import { lookupSymbol } from './SymbolTable';
 
 /** Map mermaid shapes to tldraw geo shapes */
 const SHAPE_MAP: Record<MermaidShape, NodeShape> = {
@@ -56,8 +58,16 @@ export type NodeSourceMapping = Record<string, { file: string; line: number; nam
 /**
  * Convert a parsed MermaidGraph into a CallGraph that can be fed
  * into the existing dagre layout → TldrWriter pipeline.
+ *
+ * When a SymbolTable is provided, byte offsets from tree-sitter are used
+ * for precise click-to-navigate (preferred over NODE_MAP line numbers).
  */
-export function mermaidToCallGraph(graph: MermaidGraph, fileName: string, nodeMapping?: NodeSourceMapping): CallGraph {
+export function mermaidToCallGraph(
+	graph: MermaidGraph,
+	fileName: string,
+	nodeMapping?: NodeSourceMapping,
+	symbolTable?: SymbolTable,
+): CallGraph {
 	const nodes: CodeNode[] = [];
 	const edges: CodeEdge[] = [];
 	const groups: NodeGroup[] = [];
@@ -80,11 +90,28 @@ export function mermaidToCallGraph(graph: MermaidGraph, fileName: string, nodeMa
 		const funcName = rawName.split(/\s*[—–\-]\s*|\n/)[0].trim();
 		// Line number priority: explicit nodeMapping > NODE_MAP from mermaid comments > 0
 		const line = mapping?.line || graph.nodeLineMap?.[mNode.id] || 0;
+
+		// Try to resolve byte offsets from the symbol table (ground truth from tree-sitter)
+		let startByte: number | undefined;
+		let endByte: number | undefined;
+		let resolvedLine = line;
+		if (symbolTable) {
+			const symbol = lookupSymbol(symbolTable, funcName || rawName);
+			if (symbol) {
+				startByte = symbol.startByte;
+				endByte = symbol.endByte;
+				// Tree-sitter's line number is always correct
+				resolvedLine = symbol.line;
+			}
+		}
+
 		nodes.push({
 			id: mNode.id,
 			name: funcName || rawName,
 			type: 'function',
-			line,
+			line: resolvedLine,
+			startByte,
+			endByte,
 			role: ROLE_MAP[mNode.shape],
 			shape: SHAPE_MAP[mNode.shape],
 			color: COLOR_MAP[mNode.shape],

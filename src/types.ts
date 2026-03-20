@@ -34,6 +34,10 @@ export interface CodeNode {
 	name: string;
 	type: 'function' | 'method' | 'class' | 'interface' | 'variable';
 	line: number;
+	/** Byte offset range in source file (from tree-sitter AST) */
+	startByte?: number;
+	/** Byte offset range in source file (from tree-sitter AST) */
+	endByte?: number;
 	/** Parent class name if this is a method */
 	parent?: string;
 	/** Semantic role assigned by SemanticAnalyzer */
