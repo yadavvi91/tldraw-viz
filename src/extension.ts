@@ -19,6 +19,7 @@ import { detectEntrypoints, entrypointsToFlowConfigs } from './EntrypointDetecto
 import type { CallGraph } from './types';
 import type { FlowConfig } from './GranularityFilter';
 import { TldrawEditorProvider } from './TldrawEditorProvider';
+import { buildSymbolTable } from './SymbolTable';
 import type Parser from 'web-tree-sitter';
 
 let shadowDir: ShadowDirectory | undefined;
@@ -387,19 +388,11 @@ async function generateFlows() {
  * This is only needed for old mermaid files generated before NODE_MAP was added.
  */
 async function resolveSourceLines(callGraph: CallGraph, sourceFile: string): Promise<void> {
-	// If all nodes already have lines (from NODE_MAP), nothing to do
-	const unresolved = callGraph.nodes.filter(n => n.line === 0);
-	if (unresolved.length === 0) {
-		log.info(`resolveSourceLines: all ${callGraph.nodes.length} nodes already have lines from NODE_MAP`);
-		return;
-	}
-
 	const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri;
 	if (!workspaceRoot) return;
 
 	try {
 		const fileUri = vscode.Uri.joinPath(workspaceRoot, sourceFile);
-		log.info(`resolveSourceLines: ${unresolved.length}/${callGraph.nodes.length} nodes need resolution for "${sourceFile}"`);
 		const doc = await vscode.workspace.openTextDocument(fileUri);
 		const ext = path.extname(sourceFile);
 		const langKey = extensionToLanguage(ext);
@@ -410,8 +403,33 @@ async function resolveSourceLines(callGraph: CallGraph, sourceFile: string): Pro
 
 		await initParser();
 		const tree = await parseSource(doc.getText(), config);
+
+		// Build symbol table for byte-precise source mapping
+		const symTable = buildSymbolTable(tree, config);
+
+		// Apply byte offsets from symbol table to ALL nodes (even those with NODE_MAP lines)
+		for (const node of callGraph.nodes) {
+			const sym = symTable.get(node.name) || symTable.get(node.id);
+			if (sym) {
+				node.startByte = sym.startByte;
+				node.endByte = sym.endByte;
+				// Also fix line from symbol table (ground truth)
+				if (node.line === 0) {
+					node.line = sym.line;
+				}
+			}
+		}
+
 		const astNodes = extractNodes(tree, config);
 		const astLineMap = new Map(astNodes.map(n => [n.name, n.line]));
+
+		// If all nodes already have lines, skip the multi-pass resolution
+		const unresolved = callGraph.nodes.filter(n => n.line === 0);
+		if (unresolved.length === 0) {
+			log.info(`resolveSourceLines: all ${callGraph.nodes.length} nodes resolved`);
+			return;
+		}
+		log.info(`resolveSourceLines: ${unresolved.length}/${callGraph.nodes.length} nodes need line resolution for "${sourceFile}"`);
 
 		// Pass 1: direct AST match on node name/id
 		for (const node of callGraph.nodes) {
@@ -603,6 +621,7 @@ async function buildCallGraphFromEditor(): Promise<{
 	graph: CallGraph;
 	content: string;
 	config: ReturnType<typeof getLanguageConfig> & {};
+	tree: Parser.Tree;
 	fileName: string;
 	sourceUri: vscode.Uri;
 } | undefined> {
@@ -631,7 +650,7 @@ async function buildCallGraphFromEditor(): Promise<{
 	const graph: CallGraph = { nodes, edges, fileName, language: document.languageId };
 	analyze(graph, tree, config);
 
-	return { graph, content, config, fileName, sourceUri: document.uri };
+	return { graph, content, config, tree, fileName, sourceUri: document.uri };
 }
 
 async function setApiKey(context: vscode.ExtensionContext): Promise<void> {
@@ -672,7 +691,10 @@ async function generateDiagram(
 	const built = await buildCallGraphFromEditor();
 	if (!built) return;
 
-	const { graph, content, config, fileName, sourceUri } = built;
+	const { graph, content, config, tree, fileName, sourceUri } = built;
+
+	// Build symbol table from tree-sitter AST for byte-precise source mapping
+	const symbolTable = buildSymbolTable(tree, config);
 
 	const generateFn = promptType === 'overview' ? generateOverviewPrompt : generateDetailPrompt;
 	const prompt = generateFn(graph, content, config);
@@ -701,11 +723,11 @@ async function generateDiagram(
 				: sd.getMermaidDetailUri(sourceUri);
 			await vscode.workspace.fs.writeFile(mmdUri, Buffer.from(mermaidCode, 'utf-8'));
 
-			// Convert to .tldr directly
+			// Convert to .tldr directly — pass symbol table for byte-precise source mapping
 			const mermaidGraph = parseMermaid(mermaidCode);
-			const callGraph = mermaidToCallGraph(mermaidGraph, fileName);
+			const callGraph = mermaidToCallGraph(mermaidGraph, fileName, undefined, symbolTable);
 
-			// Resolve lines from AST-parsed call graph for Claude-generated nodes
+			// Fallback: for nodes the symbol table didn't match, try the AST line map
 			const astLineMap = new Map(graph.nodes.map(n => [n.name, n.line]));
 			for (const node of callGraph.nodes) {
 				if (node.line === 0) {

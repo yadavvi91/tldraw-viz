@@ -12,6 +12,8 @@ async function navigateToSource(
 	line: number,
 	name: string,
 	findCurrentLine: (root: vscode.Uri, file: string, name: string, fallback: number) => Promise<number>,
+	startByte?: number,
+	endByte?: number,
 ): Promise<void> {
 	const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri;
 	if (!workspaceRoot || !file) return;
@@ -38,13 +40,26 @@ async function navigateToSource(
 			viewColumn: vscode.ViewColumn.Beside,
 			preserveFocus: false,
 		};
-		// Only set cursor position if we have a real line number
-		if (resolvedLine > 0) {
+
+		// Prefer byte offsets from tree-sitter (exact) over line numbers
+		if (startByte != null && endByte != null) {
+			const startPos = doc.positionAt(startByte);
+			const endPos = doc.positionAt(endByte);
+			showOptions.selection = new vscode.Range(startPos, endPos);
+		} else if (resolvedLine > 0) {
 			const zeroBasedLine = resolvedLine - 1;
 			showOptions.selection = new vscode.Range(zeroBasedLine, 0, zeroBasedLine, 0);
 		}
+
 		const editor = await vscode.window.showTextDocument(doc, showOptions);
-		if (resolvedLine > 0) {
+
+		if (startByte != null && endByte != null) {
+			const startPos = doc.positionAt(startByte);
+			editor.revealRange(
+				new vscode.Range(startPos, startPos),
+				vscode.TextEditorRevealType.InCenter,
+			);
+		} else if (resolvedLine > 0) {
 			const zeroBasedLine = resolvedLine - 1;
 			editor.revealRange(
 				new vscode.Range(zeroBasedLine, 0, zeroBasedLine, 0),
@@ -122,6 +137,8 @@ export class TldrawEditorProvider implements vscode.CustomReadonlyEditorProvider
 						msg.data.line,
 						msg.data.name,
 						this.findCurrentLine,
+						msg.data.startByte,
+						msg.data.endByte,
 					);
 				}
 			},

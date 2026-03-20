@@ -15,6 +15,9 @@ export const webviewBuildOptions = {
 	minify: isProd,
 	treeShaking: true,
 	jsx: 'automatic',
+	define: {
+		'process.env.NODE_ENV': '"development"',
+	},
 	loader: {
 		'.woff2': 'file',
 		'.woff': 'file',

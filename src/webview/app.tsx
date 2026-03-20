@@ -207,6 +207,8 @@ function TldrawEditor({ fileContents }: { fileContents: string }) {
 						sourceLine?: number;
 						sourceName?: string;
 						sourceFile?: string;
+						sourceStartByte?: number;
+						sourceEndByte?: number;
 					} | undefined;
 					if (!meta) return;
 
@@ -221,7 +223,13 @@ function TldrawEditor({ fileContents }: { fileContents: string }) {
 
 					vscode.postMessage({
 						type: 'shapeClicked',
-						data: { file, line, name },
+						data: {
+							file,
+							line,
+							name,
+							startByte: meta.sourceStartByte,
+							endByte: meta.sourceEndByte,
+						},
 					});
 				}, 150);
 			},
