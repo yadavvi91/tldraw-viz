@@ -2,7 +2,7 @@
   "name": "tldraw-viz",
   "displayName": "tldraw Code Visualizer",
   "description": "Auto-generate tldraw call graph diagrams from source code",
-  "version": "2.0.42",
+  "version": "2.0.43",
   "publisher": "yadavvi91",
   "license": "MIT",
   "repository": {
@@ -95,6 +95,11 @@
         "command": "tldraw-viz.navigateToFunction",
         "title": "Navigate to Function in Diagram",
         "category": "tldraw"
+      },
+      {
+        "command": "tldraw-viz.showFunctionDiagram",
+        "title": "Show Function Control Flow",
+        "category": "tldraw"
       }
     ],
     "keybindings": [
@@ -108,6 +113,12 @@
         "command": "tldraw-viz.navigateToFunction",
         "key": "ctrl+shift+g",
         "mac": "cmd+shift+g"
+      },
+      {
+        "command": "tldraw-viz.showFunctionDiagram",
+        "key": "ctrl+shift+f",
+        "mac": "cmd+shift+f",
+        "when": "editorTextFocus"
       }
     ],
     "configuration": {

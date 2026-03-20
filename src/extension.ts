@@ -20,6 +20,8 @@ import type { CallGraph } from './types';
 import type { FlowConfig } from './GranularityFilter';
 import { TldrawEditorProvider } from './TldrawEditorProvider';
 import { buildSymbolTable } from './SymbolTable';
+import { extractControlFlow } from './ControlFlowExtractor';
+import { controlFlowToCallGraph } from './ControlFlowConverter';
 import type Parser from 'web-tree-sitter';
 
 let shadowDir: ShadowDirectory | undefined;
@@ -1369,6 +1371,144 @@ async function navigateToFunction(): Promise<void> {
 	}
 }
 
+/**
+ * Show a control flow diagram for the function at the cursor position.
+ * Parses the file with tree-sitter, finds the deepest function/method
+ * containing the cursor, extracts control flow, and opens as a .tldr diagram.
+ */
+async function showFunctionDiagram() {
+	const editor = vscode.window.activeTextEditor;
+	if (!editor) {
+		vscode.window.showWarningMessage('No active editor.');
+		return;
+	}
+
+	const document = editor.document;
+	const content = document.getText();
+	const cursorOffset = document.offsetAt(editor.selection.active);
+	const fileName = vscode.workspace.asRelativePath(document.uri);
+	const config = getLanguageConfig(document.languageId);
+
+	if (!config) {
+		vscode.window.showWarningMessage(
+			`Language "${document.languageId}" is not supported.`,
+		);
+		return;
+	}
+
+	if (!config.controlFlow) {
+		vscode.window.showWarningMessage(
+			`Control flow extraction is not yet supported for "${document.languageId}".`,
+		);
+		return;
+	}
+
+	await initParser();
+	const tree = await parseSource(content, config);
+
+	// Find the deepest function/method node containing the cursor
+	const allFunctionTypes = new Set([
+		...config.functionTypes,
+		...config.methodTypes,
+	]);
+
+	let deepestFn: Parser.SyntaxNode | null = null;
+	const cursor = tree.rootNode.walk();
+	let reachedEnd = false;
+
+	// Walk the AST tree to find the deepest function containing the cursor offset
+	while (!reachedEnd) {
+		const node = cursor.currentNode;
+		if (allFunctionTypes.has(node.type)) {
+			if (node.startIndex <= cursorOffset && cursorOffset <= node.endIndex) {
+				deepestFn = node;
+			}
+		}
+		// Try going deeper
+		if (cursor.gotoFirstChild()) {
+			continue;
+		}
+		// Try going to next sibling
+		if (cursor.gotoNextSibling()) {
+			continue;
+		}
+		// Go back up until we can go to next sibling
+		while (!reachedEnd) {
+			if (!cursor.gotoParent()) {
+				reachedEnd = true;
+			} else if (cursor.gotoNextSibling()) {
+				break;
+			}
+		}
+	}
+
+	if (!deepestFn) {
+		vscode.window.showWarningMessage('Cursor is not inside a function or method.');
+		return;
+	}
+
+	// Get function name
+	const nameNode = deepestFn.childForFieldName(config.nameField);
+	let functionName = nameNode?.text;
+	if (!functionName && deepestFn.parent) {
+		if (deepestFn.parent.type === 'variable_declarator') {
+			functionName = deepestFn.parent.childForFieldName('name')?.text;
+		}
+	}
+	functionName = functionName || 'anonymous';
+
+	// Extract control flow
+	const cfg = extractControlFlow(deepestFn, functionName, fileName, config);
+
+	if (cfg.nodes.length <= 2) {
+		vscode.window.showInformationMessage(
+			`Function "${functionName}" has no control flow to visualize.`,
+		);
+		return;
+	}
+
+	// Convert to CallGraph for reuse with dagre + TldrWriter
+	const callGraph = controlFlowToCallGraph(cfg);
+	const positioned = layoutCallGraph(callGraph);
+
+	const sd = getShadowDir();
+	const tldr = generateTldr(callGraph, {
+		sourceFile: fileName,
+		sourceHash: sd.computeHash(content),
+		type: 'file',
+	}, positioned);
+	const tldrContent = serializeTldr(tldr);
+
+	// Write to shadow directory flows/ subfolder
+	const baseName = path.basename(fileName, path.extname(fileName));
+	const flowName = `${baseName}.${functionName}.flow`;
+	const flowUri = sd.getFlowUri(flowName);
+
+	// Ensure the flows/ directory exists
+	const flowDir = vscode.Uri.joinPath(flowUri, '..');
+	await vscode.workspace.fs.createDirectory(flowDir);
+	await vscode.workspace.fs.writeFile(flowUri, Buffer.from(tldrContent, 'utf-8'));
+
+	try {
+		await vscode.commands.executeCommand(
+			'vscode.openWith',
+			flowUri,
+			'tldraw-viz.tldr',
+			vscode.ViewColumn.Beside,
+		);
+	} catch {
+		await vscode.commands.executeCommand(
+			'vscode.open',
+			flowUri,
+			{ viewColumn: vscode.ViewColumn.Beside },
+		);
+	}
+
+	vscode.window.showInformationMessage(
+		`Control flow: ${functionName}() — ${cfg.nodes.length} nodes, ${cfg.edges.length} edges`,
+	);
+}
+
 export async function activate(context: vscode.ExtensionContext) {
 	// Restore API key from secure storage
 	const apiKey = await context.secrets.get('tldraw-viz.anthropicApiKey');
@@ -1394,6 +1534,7 @@ export async function activate(context: vscode.ExtensionContext) {
 		vscode.commands.registerCommand('tldraw-viz.generateProjectArchitecture', () => generateProjectArchitecture(context)),
 		vscode.commands.registerCommand('tldraw-viz.generateFlowWithClaude', () => generateFlowWithClaude(context)),
 		vscode.commands.registerCommand('tldraw-viz.navigateToFunction', navigateToFunction),
+		vscode.commands.registerCommand('tldraw-viz.showFunctionDiagram', showFunctionDiagram),
 	);
 
 	// Register URI handler for shape click-to-navigate
