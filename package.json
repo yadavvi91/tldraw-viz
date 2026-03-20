@@ -116,8 +116,8 @@
       },
       {
         "command": "tldraw-viz.showFunctionDiagram",
-        "key": "ctrl+shift+f",
-        "mac": "cmd+shift+f",
+        "key": "ctrl+alt+f",
+        "mac": "ctrl+cmd+f",
         "when": "editorTextFocus"
       }
     ],
