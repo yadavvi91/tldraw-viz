@@ -136,6 +136,55 @@ export interface TldrSchema {
 
 export type TldrRecord = TldrShape | TldrBinding | Record<string, unknown>;
 
+// ── Control Flow Graph types (function-level zoom) ──────────────────
+
+/** Type of node in a control flow graph */
+export type ControlFlowNodeType =
+	| 'entry'
+	| 'exit'
+	| 'call'
+	| 'assignment'
+	| 'return'
+	| 'if-condition'
+	| 'for-loop'
+	| 'while-loop'
+	| 'try'
+	| 'catch'
+	| 'finally'
+	| 'throw'
+	| 'await'
+	| 'expression';
+
+/** A node in a function's control flow graph */
+export interface ControlFlowNode {
+	id: string;
+	label: string;
+	cfType: ControlFlowNodeType;
+	startByte: number;
+	endByte: number;
+	line: number;
+	role?: NodeRole;
+	shape?: NodeShape;
+	color?: string;
+}
+
+/** A directed edge in a control flow graph */
+export interface ControlFlowEdge {
+	from: string;
+	to: string;
+	label?: string;
+}
+
+/** Control flow graph for a single function */
+export interface ControlFlowGraph {
+	functionName: string;
+	functionLine: number;
+	sourceFile: string;
+	nodes: ControlFlowNode[];
+	edges: ControlFlowEdge[];
+	groups?: NodeGroup[];
+}
+
 /** Metadata we embed in .tldr files for staleness detection */
 export interface TldrawVizMeta {
 	sourceFile: string;

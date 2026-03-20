@@ -22,6 +22,18 @@ export interface LanguageConfig {
 	callFunctionField: string;
 	/** Field name for class name */
 	classNameField: string;
+	/** AST node types for control flow extraction (function-level zoom) */
+	controlFlow?: {
+		ifTypes: string[];
+		forTypes: string[];
+		whileTypes: string[];
+		tryTypes: string[];
+		returnTypes: string[];
+		throwTypes: string[];
+		awaitTypes: string[];
+		/** AST node types for switch statements */
+		switchTypes?: string[];
+	};
 }
 
 const LANGUAGES: Record<string, LanguageConfig> = {
@@ -36,6 +48,16 @@ const LANGUAGES: Record<string, LanguageConfig> = {
 		bodyField: 'body',
 		callFunctionField: 'function',
 		classNameField: 'name',
+		controlFlow: {
+			ifTypes: ['if_statement'],
+			forTypes: ['for_statement', 'for_in_statement'],
+			whileTypes: ['while_statement', 'do_statement'],
+			tryTypes: ['try_statement'],
+			returnTypes: ['return_statement'],
+			throwTypes: ['throw_statement'],
+			awaitTypes: ['await_expression'],
+			switchTypes: ['switch_statement'],
+		},
 	},
 	typescriptreact: {
 		languageIds: ['typescriptreact'],
@@ -48,6 +70,16 @@ const LANGUAGES: Record<string, LanguageConfig> = {
 		bodyField: 'body',
 		callFunctionField: 'function',
 		classNameField: 'name',
+		controlFlow: {
+			ifTypes: ['if_statement'],
+			forTypes: ['for_statement', 'for_in_statement'],
+			whileTypes: ['while_statement', 'do_statement'],
+			tryTypes: ['try_statement'],
+			returnTypes: ['return_statement'],
+			throwTypes: ['throw_statement'],
+			awaitTypes: ['await_expression'],
+			switchTypes: ['switch_statement'],
+		},
 	},
 	javascript: {
 		languageIds: ['javascript', 'javascriptreact'],
@@ -60,6 +92,16 @@ const LANGUAGES: Record<string, LanguageConfig> = {
 		bodyField: 'body',
 		callFunctionField: 'function',
 		classNameField: 'name',
+		controlFlow: {
+			ifTypes: ['if_statement'],
+			forTypes: ['for_statement', 'for_in_statement'],
+			whileTypes: ['while_statement', 'do_statement'],
+			tryTypes: ['try_statement'],
+			returnTypes: ['return_statement'],
+			throwTypes: ['throw_statement'],
+			awaitTypes: ['await_expression'],
+			switchTypes: ['switch_statement'],
+		},
 	},
 	python: {
 		languageIds: ['python'],
