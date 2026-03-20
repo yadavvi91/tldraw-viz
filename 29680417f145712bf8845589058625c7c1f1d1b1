@@ -1,0 +1,27 @@
+package.json
+  b25e4051e0dec7f9 5
+src/ControlFlowExtractor.ts
+  b25e4051e0dec7f9 1-536
+src/ControlFlowConverter.ts
+  b25e4051e0dec7f9 1-89
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.15",
+  "base_commit_sha": "29680417f145712bf8845589058625c7c1f1d1b1",
+  "prompts": {
+    "b25e4051e0dec7f9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2dfdfe32-3c71-438c-aaa1-6b4403d015a6",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Vishal Yadav <yadavvi91@gmail.com>",
+      "messages": [],
+      "total_additions": 626,
+      "total_deletions": 1,
+      "accepted_lines": 626,
+      "overriden_lines": 0
+    }
+  }
+}
