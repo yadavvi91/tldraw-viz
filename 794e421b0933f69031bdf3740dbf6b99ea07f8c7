@@ -1,0 +1,31 @@
+package.json
+  b25e4051e0dec7f9 5
+src/webview/app.tsx
+  b25e4051e0dec7f9 210-211,229-231
+src/messages.ts
+  b25e4051e0dec7f9 6-9
+src/TldrawEditorProvider.ts
+  b25e4051e0dec7f9 15-16,43-49,53,55-62,140-141
+src/extension.ts
+  b25e4051e0dec7f9 22,406-422,426-432,624,653,694-697,726,728,730
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.15",
+  "base_commit_sha": "794e421b0933f69031bdf3740dbf6b99ea07f8c7",
+  "prompts": {
+    "b25e4051e0dec7f9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2dfdfe32-3c71-438c-aaa1-6b4403d015a6",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Vishal Yadav <yadavvi91@gmail.com>",
+      "messages": [],
+      "total_additions": 73,
+      "total_deletions": 19,
+      "accepted_lines": 65,
+      "overriden_lines": 0
+    }
+  }
+}
