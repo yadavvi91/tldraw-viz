@@ -1,0 +1,27 @@
+package.json
+  b25e4051e0dec7f9 5
+src/languages.ts
+  b25e4051e0dec7f9 25-36,51-60,73-82,95-104
+src/types.ts
+  b25e4051e0dec7f9 139-187
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.15",
+  "base_commit_sha": "8c87390b2451570de3168ddaea21e54f4d926cf6",
+  "prompts": {
+    "b25e4051e0dec7f9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2dfdfe32-3c71-438c-aaa1-6b4403d015a6",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Vishal Yadav <yadavvi91@gmail.com>",
+      "messages": [],
+      "total_additions": 92,
+      "total_deletions": 1,
+      "accepted_lines": 92,
+      "overriden_lines": 0
+    }
+  }
+}
